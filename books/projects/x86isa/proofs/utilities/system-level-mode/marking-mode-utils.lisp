@@ -1281,6 +1281,13 @@
 
   (defthm infer-disjointness-with-all-translation-governing-addresses-from-gather-all-paging-structure-qword-addresses
     (implies (and
+              ;; We restrict this rule to only apply to non-negated forms of the
+              ;; conclusion, i.e., disjoint-p terms NOT occurring as a
+              ;; hypothesis of a goal.
+              (acl2::rewriting-positive-literal
+               `(disjoint-p
+                 ,x
+                 (all-translation-governing-addresses ,l-addrs ,x86)))
               (disjoint-p
                x
                (open-qword-paddr-list

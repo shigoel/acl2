@@ -199,7 +199,7 @@
                             ()))))
 
 (defthm mv-nth-1-rb-after-mv-nth-2-rb-alt
-  ;;; !!! So expensive!!
+  ;; !!! So expensive!!
   (implies
    (and
     (disjoint-p
@@ -465,7 +465,7 @@
             ;; The physical addresses corresponding to the PML4TE are
             ;; disjoint from the physical addresses pertaining to the
             ;; write.
-            (disjoint-p$
+            (disjoint-p
              (mv-nth 1 (las-to-pas
                         (create-canonical-address-list
                          8
@@ -475,7 +475,7 @@
             ;; The physical addresses corresponding to the PML4TE are
             ;; disjoint from the translation-governing addresses
             ;; pertaining to the PML4TE.
-            (disjoint-p$
+            (disjoint-p
              (mv-nth
               1
               (las-to-pas
@@ -491,7 +491,7 @@
             ;; The physical addresses pertaining to the write are
             ;; disjoint from the translation-governing addresses
             ;; pertaining to the PML4TE.
-            (disjoint-p$
+            (disjoint-p
              (mv-nth 1 (las-to-pas (strip-cars addr-lst) :w (cpl x86) (double-rewrite x86)))
              (all-translation-governing-addresses
               (create-canonical-address-list
@@ -504,7 +504,7 @@
             ;; disjoint from the translation-governing addresses
             ;; pertaining to the write.
 ;;; TODO: Why do we need this hyp.?
-            (disjoint-p$
+            (disjoint-p
              (all-translation-governing-addresses
               (strip-cars addr-lst)
               (double-rewrite x86))
@@ -523,8 +523,7 @@
            (equal (pdpt-base-addr lin-addr (mv-nth 1 (wb addr-lst x86)))
                   (pdpt-base-addr lin-addr x86)))
   :hints (("Goal" :do-not-induct t
-           :in-theory (e/d* (disjoint-p-commutative
-                             disjoint-p$)
+           :in-theory (e/d* (disjoint-p-commutative)
                             (rewrite-rb-to-rb-alt
                              member-p-strip-cars-of-remove-duplicate-keys)))))
 
@@ -644,7 +643,7 @@
    ;; mode.
    ;; Physical addresses corresponding to the program are disjoint
    ;; from the paging structure physical addresses.
-   (disjoint-p$
+   (disjoint-p
     (mv-nth 1 (las-to-pas
                (create-canonical-address-list *rewire_dst_to_src-len* (xr :rip 0 x86))
                :x (cpl x86) x86))
@@ -687,7 +686,7 @@
 
    ;; Physical addresses corresponding to the stack are disjoint from
    ;; the paging structures physical addresses.
-   (disjoint-p$
+   (disjoint-p
     (mv-nth 1 (las-to-pas
                (create-canonical-address-list 8 (+ -24 (xr :rgf *rsp* x86)))
                :w (cpl x86) x86))
@@ -889,7 +888,7 @@
 (defun-nx program-and-stack-no-interfere-p (x86)
   ;; The physical addresses corresponding to the program and stack
   ;; are disjoint.
-  (disjoint-p$
+  (disjoint-p
    (mv-nth 1
            (las-to-pas
             (create-canonical-address-list 8 (+ -24 (xr :rgf *rsp* x86)))
@@ -901,7 +900,7 @@
 (defun-nx source-PML4TE-and-stack-no-interfere-p (x86)
   ;; The PML4TE physical addresses are disjoint from the
   ;; stack physical addresses.
-  (disjoint-p$
+  (disjoint-p
    (mv-nth 1 (las-to-pas
               (create-canonical-address-list 8 (+ -24 (xr :rgf *rsp* x86))) :w (cpl x86) x86))
    (mv-nth 1 (las-to-pas
@@ -913,7 +912,7 @@
 (defun-nx source-PDPTE-and-stack-no-interfere-p (x86)
   ;; The PDPTE physical addresses are disjoint from the stack
   ;; physical addresses.
-  (disjoint-p$
+  (disjoint-p
    (mv-nth 1 (las-to-pas
               (create-canonical-address-list 8 (+ -24 (xr :rgf *rsp* x86))) :w (cpl x86) x86))
    (mv-nth 1 (las-to-pas
@@ -927,7 +926,7 @@
 (defun-nx destination-PML4TE-and-stack-no-interfere-p (x86)
   ;; The PML4TE physical addresses are disjoint from the stack
   ;; physical addresses.
-  (disjoint-p$
+  (disjoint-p
    (mv-nth 1 (las-to-pas
               (create-canonical-address-list 8 (+ -24 (xr :rgf *rsp* x86))) :w (cpl x86) x86))
    (mv-nth 1 (las-to-pas
@@ -938,7 +937,7 @@
 
 (defun-nx destination-PDPTE-and-stack-no-interfere-p (x86)
   ;; The destination PDPTE is disjoint from the stack.
-  (disjoint-p$
+  (disjoint-p
    (mv-nth 1 (las-to-pas
               (create-canonical-address-list 8 (+ -24 (xr :rgf *rsp* x86))) :w (cpl x86) x86))
    (mv-nth 1 (las-to-pas
@@ -956,7 +955,7 @@
   (and
    ;; The physical addresses corresponding to the program are disjoint
    ;; from those of the PDPTE (on behalf of a write).
-   (disjoint-p$
+   (disjoint-p
     (mv-nth 1 (las-to-pas
                (create-canonical-address-list
                 8
@@ -970,7 +969,7 @@
 
    ;; Translation-governing addresses of the program are disjoint from
    ;; the PDPTE physical addresses (on behalf of a write).
-   (disjoint-p$
+   (disjoint-p
     (all-translation-governing-addresses
      (create-canonical-address-list *rewire_dst_to_src-len* (xr :rip 0 x86))
      x86)
@@ -986,7 +985,7 @@
   (and
    ;; The translation-governing addresses of the ret address are
    ;; disjoint from the destination PDPTE.
-   (disjoint-p$
+   (disjoint-p
     (all-translation-governing-addresses
      (create-canonical-address-list 8 (xr :rgf *rsp* x86)) x86)
     (mv-nth 1 (las-to-pas
@@ -999,7 +998,7 @@
 
    ;; The destination PDPTE is disjoint from the ret address
    ;; on the stack.
-   (disjoint-p$
+   (disjoint-p
     (mv-nth 1 (las-to-pas
                (create-canonical-address-list 8 (xr :rgf *rsp* x86))
                :r (cpl x86) x86))
@@ -1014,7 +1013,7 @@
 (defun-nx return-address-and-stack-no-interfere-p (x86)
   ;; The ret address on the stack is disjoint from the rest of the
   ;; stack.
-  (disjoint-p$
+  (disjoint-p
    (mv-nth 1 (las-to-pas
               (create-canonical-address-list 8 (+ -24 (xr :rgf *rsp* x86))) :w (cpl x86) x86))
    (mv-nth 1 (las-to-pas
@@ -1813,39 +1812,6 @@
                                        signed-byte-p)
                                       ())))))
 
-
-  (defthm get-prefixes-xw-mem-values-in-system-level-mode-helper-2
-    (implies
-     (and
-      (disjoint-p
-       (mv-nth 1 (las-to-pas (list start-rip) :x (cpl x86) x86))
-       (all-translation-governing-addresses (list start-rip) x86))
-      (not (member-p index (mv-nth 1 (las-to-pas (list start-rip) :x (cpl x86) x86))))
-      (not (member-p index (all-translation-governing-addresses (list start-rip) x86)))
-      (canonical-address-p start-rip)
-      (unsigned-byte-p 52 index)
-      (unsigned-byte-p 8 value)
-      (not (xr :programmer-level-mode 0 x86))
-      (x86p x86))
-     (and
-      (equal (mv-nth 0 (get-prefixes start-rip prefixes 1 (xw :mem index value x86)))
-             (mv-nth 0 (get-prefixes start-rip prefixes 1 x86)))
-      (equal (mv-nth 1 (get-prefixes start-rip prefixes 1 (xw :mem index value x86)))
-             (mv-nth 1 (get-prefixes start-rip prefixes 1 x86)))))
-    :hints
-    (("Goal"
-      :do-not '(preprocess)
-      :expand
-      ((get-prefixes start-rip prefixes 1 x86)
-       (get-prefixes start-rip prefixes 1 (xw :mem index value x86)))
-      :in-theory
-      (e/d*
-       (get-prefixes disjoint-p disjoint-p-append-1)
-       (rewrite-get-prefixes-to-get-prefixes-alt
-        rewrite-rb-to-rb-alt
-        acl2::zp-open
-        force (force))))))
-
   (local
    (in-theory (e/d (member-p-of-nil)
                    ((:rewrite mv-nth-1-rb-and-xlate-equiv-memory-disjoint-from-paging-structures)
@@ -1920,6 +1886,60 @@
 
 
   (local
+   (defthm disjoint-p-all-translation-governing-addresses-subset-p-rewrite-hyp-potentially
+     (implies (and
+               (bind-free (find-l-addrs-like-create-canonical-address-list-from-fn
+                           'all-translation-governing-addresses 'l-addrs mfc state)
+                          (l-addrs))
+               ;; (syntaxp (not (cw "~% l-addrs: ~x0~%" l-addrs)))
+               (disjoint-p other-p-addrs
+                           (all-translation-governing-addresses l-addrs x86))
+               (subset-p l-addrs-subset l-addrs))
+              (disjoint-p other-p-addrs (all-translation-governing-addresses l-addrs-subset x86)))
+     :hints (("Goal"
+              :use ((:instance disjoint-p-all-translation-governing-addresses-subset-p))
+              :in-theory (e/d () (disjoint-p-all-translation-governing-addresses-subset-p))))))
+
+  (local
+   (defthm mv-nth-1-las-to-pas-subset-p-disjoint-from-other-p-addrs-rewrite-hyp-potentially
+     (implies
+      (and
+       (bind-free
+        (find-l-addrs-like-create-canonical-address-list-from-fn
+         'las-to-pas 'l-addrs mfc state)
+        (l-addrs))
+       (syntaxp (not (eq l-addrs-subset l-addrs)))
+       (disjoint-p (mv-nth 1 (las-to-pas l-addrs r-w-x cpl (double-rewrite x86)))
+                   other-p-addrs)
+       (subset-p l-addrs-subset l-addrs)
+       (not (mv-nth 0 (las-to-pas l-addrs r-w-x cpl x86))))
+      (disjoint-p (mv-nth 1 (las-to-pas l-addrs-subset r-w-x cpl x86))
+                  other-p-addrs))
+     :hints
+     (("Goal"
+       :use ((:instance mv-nth-1-las-to-pas-subset-p-disjoint-from-other-p-addrs))
+       :in-theory (e/d* ()
+                        (mv-nth-1-las-to-pas-subset-p-disjoint-from-other-p-addrs))))))
+
+  (local
+   (defthm mv-nth-1-las-to-pas-subset-p-disjoint-from-other-p-addrs-alt-rewrite-hyp-potentially
+     (implies
+      (and
+       (bind-free (find-l-addrs-like-create-canonical-address-list-from-fn
+                   'las-to-pas 'l-addrs mfc state)
+                  (l-addrs))
+       (syntaxp (not (eq l-addrs-subset l-addrs)))
+       (disjoint-p other-p-addrs
+                   (mv-nth 1 (las-to-pas l-addrs r-w-x cpl (double-rewrite x86))))
+       (subset-p l-addrs-subset l-addrs)
+       (not (mv-nth 0 (las-to-pas l-addrs r-w-x cpl x86))))
+      (disjoint-p other-p-addrs (mv-nth 1 (las-to-pas l-addrs-subset r-w-x cpl x86))))
+     :hints (("Goal"
+              :use ((:instance mv-nth-1-las-to-pas-subset-p-disjoint-from-other-p-addrs-alt))
+              :in-theory (e/d* ()
+                               (mv-nth-1-las-to-pas-subset-p-disjoint-from-other-p-addrs-alt))))))
+
+  (local
    (defthm get-prefixes-xw-mem-in-system-level-mode
      (implies
       (and
@@ -1969,10 +1989,11 @@
                 start-rip prefixes cnt x86 (xw :mem index value x86))
        :expand ((get-prefixes start-rip prefixes cnt (xw :mem index value x86))
                 (get-prefixes start-rip prefixes cnt x86))
-       :in-theory (e/d* (get-prefixes
-                         disjoint-p$
-                         disjoint-p-commutative)
-                        (disjoint-p
+       :in-theory (e/d* (get-prefixes)
+                        (disjoint-p-all-translation-governing-addresses-subset-p
+                         mv-nth-1-las-to-pas-subset-p-disjoint-from-other-p-addrs
+                         mv-nth-1-las-to-pas-subset-p-disjoint-from-other-p-addrs
+                         disjoint-p
                          member-p
                          disjoint-p-cons-1
                          rewrite-get-prefixes-to-get-prefixes-alt
@@ -1989,6 +2010,25 @@
                          get-prefixes-does-not-modify-x86-state-in-programmer-level-mode
                          acl2::zp-open
                          not))))))
+
+  (local
+   (defthm infer-disjointness-with-all-translation-governing-addresses-from-gather-all-paging-structure-qword-addresses-rewrite-hyp-potentially
+     (implies (and
+               (disjoint-p
+                x
+                (open-qword-paddr-list
+                 (gather-all-paging-structure-qword-addresses (double-rewrite x86))))
+               (true-listp x)
+               (canonical-address-listp l-addrs))
+              (disjoint-p
+               x
+               (all-translation-governing-addresses l-addrs x86)))
+     :hints (("Goal"
+              :do-not-induct t
+              :use ((:instance infer-disjointness-with-all-translation-governing-addresses-from-gather-all-paging-structure-qword-addresses))
+              :in-theory (e/d* ()
+                               (infer-disjointness-with-all-translation-governing-addresses-from-gather-all-paging-structure-qword-addresses))))
+     :rule-classes :rewrite))
 
   (defthm get-prefixes-and-write-to-physical-memory
     (implies
@@ -2073,7 +2113,7 @@
        (mv-nth 1
                (las-to-pas (create-canonical-address-list cnt start-rip)
                            :x (cpl x86) (double-rewrite x86))))
-      (disjoint-p$
+      (disjoint-p
        p-addrs
        (open-qword-paddr-list
         (gather-all-paging-structure-qword-addresses (double-rewrite x86))))
@@ -2104,7 +2144,6 @@
       (e/d*
        (get-prefixes-alt
         subset-p
-        disjoint-p$
         disjoint-p-commutative
         disjoint-p-subset-p)
        (rewrite-rb-to-rb-alt
@@ -2123,7 +2162,7 @@
        (mv-nth 1 (las-to-pas
                   (create-canonical-address-list cnt start-rip)
                   :x (cpl x86) (double-rewrite x86))))
-      (disjoint-p$
+      (disjoint-p
        (mv-nth 1 (las-to-pas (strip-cars addr-lst) :w (cpl x86) (double-rewrite x86)))
        (open-qword-paddr-list
         (gather-all-paging-structure-qword-addresses (double-rewrite x86))))
@@ -2146,7 +2185,6 @@
     :hints (("Goal"
              :do-not-induct t
              :in-theory (e/d* (las-to-pas
-                               disjoint-p$
                                wb
                                disjoint-p-commutative
                                infer-disjointness-with-all-translation-governing-addresses-from-gather-all-paging-structure-qword-addresses
@@ -2207,12 +2245,12 @@
            (l-addrs-2 . ,l-addrs-2))))
     nil))
 
-(defun find-both-l-addrs-from-disjoint-p$-of-las-to-pas-aux
+(defun find-both-l-addrs-from-disjoint-p-of-las-to-pas-aux
   (l-addrs-subset-1 l-addrs-subset-2 calls)
   ;; The first alist below will be weeded out by
   ;; the syntaxp in the theorem.
 
-  ;; (find-both-l-addrs-from-disjoint-p$-of-las-to-pas-aux
+  ;; (find-both-l-addrs-from-disjoint-p-of-las-to-pas-aux
   ;;  '(create-canonical-address-list 4 rgf)
   ;;  '(create-canonical-address-list 4 start-rip)
   ;;  '((disjoint-p
@@ -2229,17 +2267,17 @@
     (append (get-both-l-addrs
              'las-to-pas l-addrs-subset-1 l-addrs-subset-2
              (second (car calls)) (third (car calls)))
-            (find-both-l-addrs-from-disjoint-p$-of-las-to-pas-aux
+            (find-both-l-addrs-from-disjoint-p-of-las-to-pas-aux
              l-addrs-subset-1 l-addrs-subset-2
              (cdr calls)))))
 
-(defun find-both-l-addrs-from-disjoint-p$-of-las-to-pas
+(defun find-both-l-addrs-from-disjoint-p-of-las-to-pas
   (l-addrs-subset-1 l-addrs-subset-2 mfc state)
   (declare (xargs :stobjs (state) :mode :program)
            (ignorable state))
-  (b* ((calls (acl2::find-calls-lst 'disjoint-p$ (acl2::mfc-clause mfc)))
+  (b* ((calls (acl2::find-calls-lst 'disjoint-p (acl2::mfc-clause mfc)))
        ((when (not calls)) nil))
-    (find-both-l-addrs-from-disjoint-p$-of-las-to-pas-aux
+    (find-both-l-addrs-from-disjoint-p-of-las-to-pas-aux
      l-addrs-subset-1 l-addrs-subset-2 calls)))
 
 (defthm two-mv-nth-1-las-to-pas-subset-p-disjoint-from-las-to-pas
@@ -2254,12 +2292,19 @@
   ;; form (create-canonical-address-list ...).
   (implies
    (and
+    ;; We restrict this rule to only apply to non-negated forms of the
+    ;; conclusion, i.e., disjoint-p terms NOT occurring as a
+    ;; hypothesis of a goal.
+    (acl2::rewriting-positive-literal
+     `(disjoint-p
+       (mv-nth 1 (las-to-pas ,l-addrs-subset-1 ,r-w-x-1 ,cpl-1 ,x86))
+       (mv-nth 1 (las-to-pas ,l-addrs-subset-2 ,r-w-x-2 ,cpl-2 ,x86))))
     (syntaxp (not (equal l-addrs-subset-1 l-addrs-subset-2)))
-    (bind-free (find-both-l-addrs-from-disjoint-p$-of-las-to-pas
+    (bind-free (find-both-l-addrs-from-disjoint-p-of-las-to-pas
                 l-addrs-subset-1 l-addrs-subset-2 mfc state)
                (l-addrs-1 l-addrs-2))
     ;; (syntaxp (not (cw "~%~% !!! l-addrs-1: ~x0 ~% !!! l-addrs-2: ~x0~%~%" l-addrs-1 l-addrs-2)))
-    (disjoint-p$
+    (disjoint-p
      (mv-nth 1 (las-to-pas l-addrs-1 r-w-x-1 cpl-1 (double-rewrite x86)))
      (mv-nth 1 (las-to-pas l-addrs-2 r-w-x-2 cpl-2 (double-rewrite x86))))
     (subset-p l-addrs-subset-1 l-addrs-1)
@@ -2285,7 +2330,7 @@
                             (y (mv-nth 1 (las-to-pas l-addrs-2 r-w-x-2 cpl-2 x86)))
                             (a (mv-nth 1 (las-to-pas l-addrs-subset-1 r-w-x-1 cpl-1 x86)))
                             (b (mv-nth 1 (las-to-pas l-addrs-subset-2 r-w-x-2 cpl-2 x86)))))
-           :in-theory (e/d* (disjoint-p$)
+           :in-theory (e/d* ()
                             (mv-nth-1-las-to-pas-subset-p
                              disjoint-p-subset-p)))))
 
@@ -2356,7 +2401,7 @@
 (defun-nx source-PML4TE-and-program-no-interfere-p (x86)
   ;; The PML4TE physical addresses are disjoint from the
   ;; translation-governing addresses of the program.
-  (disjoint-p$
+  (disjoint-p
    (mv-nth 1 (las-to-pas
               (create-canonical-address-list
                8
@@ -2369,7 +2414,7 @@
 (defun-nx source-PML4TE-itself-no-interfere-p (x86)
   ;; The PML4TE physical addresses are disjoint from the
   ;; translation-governing addresses of the PML4TE.
-  (disjoint-p$
+  (disjoint-p
    (mv-nth 1 (las-to-pas
               (create-canonical-address-list
                8
@@ -2384,20 +2429,30 @@
 (defun-nx source-PML4TE-and-stack-no-interfere-p-aux (x86)
   ;; The PML4TE physical addresses are disjoint from the
   ;; translation-governing addresses of the PML4TE.
-  (disjoint-p$
-   (mv-nth 1 (las-to-pas
-              (create-canonical-address-list
-               8
-               (pml4-table-entry-addr (xr :rgf *rdi* x86) (pml4-table-base-addr x86)))
-              :r (cpl x86) x86))
-   (all-translation-governing-addresses
-    (create-canonical-address-list 8 (+ -24 (xr :rgf 4 x86)))
-    x86)))
+  (and
+   (disjoint-p
+    (mv-nth 1 (las-to-pas
+               (create-canonical-address-list
+                8
+                (pml4-table-entry-addr (xr :rgf *rdi* x86) (pml4-table-base-addr x86)))
+               :r (cpl x86) x86))
+    (all-translation-governing-addresses
+     (create-canonical-address-list 8 (+ -24 (xr :rgf 4 x86)))
+     x86))
+   (disjoint-p
+    (mv-nth 1 (las-to-pas
+               (create-canonical-address-list 8 (+ -24 (xr :rgf 4 x86)))
+               :w (cpl x86) x86))
+    (all-translation-governing-addresses
+     (create-canonical-address-list
+      8
+      (pml4-table-entry-addr (xr :rgf *rdi* x86) (pml4-table-base-addr x86)))
+     x86))))
 
 (defun-nx source-PDPTE-and-program-no-interfere-p (x86)
   ;; The PDPTE physical addresses are disjoint from the
   ;; translation-governing addresses of the program.
-  (disjoint-p$
+  (disjoint-p
    (mv-nth 1 (las-to-pas
               (create-canonical-address-list
                8
@@ -2412,7 +2467,7 @@
 (defun-nx source-PDPTE-itself-no-interfere-p (x86)
   ;; The PDPTE physical addresses are disjoint from the
   ;; translation-governing addresses of the PDPTE.
-  (disjoint-p$
+  (disjoint-p
    (mv-nth 1 (las-to-pas
               (create-canonical-address-list
                8
@@ -2431,7 +2486,7 @@
 (defun-nx source-PDPTE-and-stack-no-interfere-p-aux (x86)
   ;; The PDPTE physical addresses are disjoint from the
   ;; translation-governing addresses of the PDPTE.
-  (disjoint-p$
+  (disjoint-p
    (mv-nth 1 (las-to-pas
               (create-canonical-address-list
                8
@@ -2446,7 +2501,7 @@
 (defun-nx source-PDPTE-and-source-PML4E-no-interfere-p (x86)
   ;; The PDPTE physical addresses are disjoint from the
   ;; translation-governing addresses of the PML4E.
-  (disjoint-p$
+  (disjoint-p
    (mv-nth 1 (las-to-pas
               (create-canonical-address-list
                8
@@ -2463,7 +2518,7 @@
 (defun-nx destination-PML4TE-and-program-no-interfere-p (x86)
   ;; The PML4TE physical addresses are disjoint from the
   ;; translation-governing addresses of the program.
-  (disjoint-p$
+  (disjoint-p
    (mv-nth 1 (las-to-pas
               (create-canonical-address-list
                8
@@ -2476,7 +2531,7 @@
 (defun-nx destination-PML4TE-itself-no-interfere-p (x86)
   ;; The PML4TE physical addresses are disjoint from the
   ;; translation-governing addresses of the PML4TE.
-  (disjoint-p$
+  (disjoint-p
    (mv-nth 1 (las-to-pas
               (create-canonical-address-list
                8
@@ -2491,18 +2546,40 @@
 (defun-nx destination-PML4TE-and-stack-no-interfere-p-aux (x86)
   ;; The PML4TE physical addresses are disjoint from the
   ;; translation-governing addresses of the PML4TE.
-  (disjoint-p$
+  (and
+   (disjoint-p
+    (mv-nth 1 (las-to-pas
+               (create-canonical-address-list
+                8
+                (pml4-table-entry-addr (xr :rgf *rsi* x86) (pml4-table-base-addr x86)))
+               :r (cpl x86) x86))
+    (all-translation-governing-addresses
+     (create-canonical-address-list 8 (+ -24 (xr :rgf 4 x86)))
+     x86))
+   (disjoint-p
+    (mv-nth 1 (las-to-pas
+               (create-canonical-address-list 8 (+ -24 (xr :rgf *rsp* x86))) :w (cpl x86) x86))
+    (all-translation-governing-addresses
+     (create-canonical-address-list
+      8
+      (pml4-table-entry-addr (xr :rgf *rsi* x86) (pml4-table-base-addr x86)))
+     x86))))
+
+(defun-nx destination-PML4TE-and-source-PML4TE-no-interfere-p (x86)
+  (disjoint-p
    (mv-nth 1 (las-to-pas
               (create-canonical-address-list
                8
                (pml4-table-entry-addr (xr :rgf *rsi* x86) (pml4-table-base-addr x86)))
               :r (cpl x86) x86))
    (all-translation-governing-addresses
-    (create-canonical-address-list 8 (+ -24 (xr :rgf 4 x86)))
+    (create-canonical-address-list
+     8
+     (pml4-table-entry-addr (xr :rgf *rdi* x86) (pml4-table-base-addr x86)))
     x86)))
 
 (defun-nx destination-PML4TE-and-source-PDPTE-no-interfere-p (x86)
-  (disjoint-p$
+  (disjoint-p
    (mv-nth 1 (las-to-pas
               (create-canonical-address-list
                8
@@ -2514,6 +2591,16 @@
      (page-dir-ptr-table-entry-addr
       (xr :rgf *rdi* x86)
       (pdpt-base-addr (xr :rgf *rdi* x86) x86)))
+    x86)))
+
+(defun-nx program-and-stack-no-interfere-p-aux (x86)
+  (disjoint-p
+   (mv-nth 1
+           (las-to-pas
+            (create-canonical-address-list 8 (+ -24 (xr :rgf *rsp* x86)))
+            :w (cpl x86) x86))
+   (all-translation-governing-addresses
+    (create-canonical-address-list *rewire_dst_to_src-len* (xr :rip 0 x86))
     x86)))
 
 (def-gl-export remove-logext-from-ash-loghead-40-expr
@@ -2547,92 +2634,12 @@
   ;; Why do I need this?
   (unsigned-byte-p 1 (acl2::bool->bit x)))
 
-;; (defthmd infer-disjointness-with-all-translation-governing-addresses-from-gather-all-paging-structure-qword-addresses-with-disjoint-p$
-;;   (implies (and
-;;             (disjoint-p$
-;;              x
-;;              (open-qword-paddr-list
-;;               (gather-all-paging-structure-qword-addresses (double-rewrite x86))))
-;;             (true-listp x)
-;;             (canonical-address-listp l-addrs))
-;;            (disjoint-p$
-;;             x
-;;             (all-translation-governing-addresses l-addrs x86)))
-;;   :hints (("Goal" :in-theory (e/d* (disjoint-p$) ())))
-;;   :rule-classes :rewrite)
-
-(defthm infer-disjointness-with-all-translation-governing-addresses-from-gather-all-paging-structure-qword-addresses-with-both-disjoint-p-and-disjoint-p$
-  (implies (and
-            (disjoint-p$
-             x
-             (open-qword-paddr-list
-              (gather-all-paging-structure-qword-addresses (double-rewrite x86))))
-            (true-listp x)
-            (canonical-address-listp l-addrs))
-           (disjoint-p
-            x
-            (all-translation-governing-addresses l-addrs x86)))
-  :hints (("Goal" :in-theory (e/d* (disjoint-p$) ())))
-  :rule-classes :rewrite)
-
-(defun find-first-arg-of-disjoint-p$-when-second-arg-matches-aux
-  (arg-1-var arg-2 calls)
-  ;; (find-first-arg-of-disjoint-p$-when-second-arg-matches-aux
-  ;;  'x
-  ;;  'y
-  ;;  '((disjoint-p a y)
-  ;;    (disjoint-p b z)
-  ;;    (disjoint-p c y)))
-  (if (endp calls)
-      nil
-    (append
-     (if (equal (third (car calls)) arg-2)
-         `(((,arg-1-var . ,(second (car calls)))))
-       nil)
-     (find-first-arg-of-disjoint-p$-when-second-arg-matches-aux
-      arg-1-var arg-2 (cdr calls)))))
-
-(defun find-first-arg-of-disjoint-p$-when-second-arg-matches
-  (arg-1-var arg-2 mfc state)
-  (declare (xargs :stobjs (state) :mode :program)
-           (ignorable state))
-  (b* ((calls (acl2::find-calls-lst 'disjoint-p$ (acl2::mfc-clause mfc)))
-       ((when (not calls)) nil))
-    (find-first-arg-of-disjoint-p$-when-second-arg-matches-aux
-     arg-1-var arg-2 calls)))
-
-(defthm infer-disjointness-with-all-translation-governing-addresses-from-gather-all-paging-structure-qword-addresses-with-disjoint-p$-new
-  (implies (and (bind-free
-                 (find-first-arg-of-disjoint-p$-when-second-arg-matches
-                  'x
-                  '(open-qword-paddr-list
-                    (gather-all-paging-structure-qword-addresses x86))
-                  mfc state)
-                 (x))
-                ;; (syntaxp (not (equal x y)))
-                (subset-p y x)
-                (disjoint-p$
-                 x
-                 (open-qword-paddr-list
-                  (gather-all-paging-structure-qword-addresses (double-rewrite x86)))))
-           (disjoint-p
-            y
-            (open-qword-paddr-list
-             (gather-all-paging-structure-qword-addresses x86))))
-  :hints (("Goal" :in-theory (e/d* (disjoint-p$ disjoint-p subset-p) ())))
-  :rule-classes :rewrite)
-
-(in-theory (e/d ()
-                (infer-disjointness-with-all-translation-governing-addresses-from-gather-all-paging-structure-qword-addresses)))
-
 (def-gl-export remove-logext-from-logand-and-ctri
   :hyp (unsigned-byte-p 64 n)
   :concl (equal (logext 64 (logand -4096 (logext 64 n)))
                 (logand -4096 (logext 64 n)))
   :g-bindings
   (gl::auto-bindings (:mix (:nat n 64))))
-
-#||
 
 (i-am-here)
 
@@ -2650,7 +2657,7 @@
 
 ;; (acl2::why mv-nth-1-rb-after-mv-nth-2-get-prefixes-alt-no-prefix-byte)
 
-(set-accumulated-persistence t)
+;; (set-accumulated-persistence t)
 
 ;; X86ISA !>(show-accumulated-persistence :frames-f)
 
@@ -4335,6 +4342,332 @@
 (local (include-book "tools/trivial-ancestors-check" :dir :system))
 (local (acl2::use-trivial-ancestors-check))
 
+(thm
+ (implies
+  ;; (rewire_dst_to_src-assumptions x86)
+  (and
+   (x86-state-okp x86)
+   (program-ok-p x86)
+   (stack-ok-p x86)
+   (program-and-stack-no-interfere-p x86)
+   (program-and-stack-no-interfere-p-aux x86)
+   (source-addresses-ok-p x86)
+   (source-PML4TE-ok-p x86)
+   (source-PDPTE-ok-p x86)
+   (source-PML4TE-and-stack-no-interfere-p x86)   
+   (source-PML4TE-and-program-no-interfere-p x86)
+   (source-PML4TE-itself-no-interfere-p x86)
+   (source-PML4TE-and-stack-no-interfere-p-aux x86)
+   (source-PDPTE-and-stack-no-interfere-p x86)
+   (source-PDPTE-and-program-no-interfere-p x86)
+   (source-PDPTE-itself-no-interfere-p x86)
+   (source-PDPTE-and-stack-no-interfere-p-aux x86)
+   ;; This is too strong ('coz equality of rbs doesn't matter, but
+   ;; xlate-equiv matters), but I'll let this lie for now.
+   (source-PDPTE-and-source-PML4E-no-interfere-p x86)
+
+
+   (destination-addresses-ok-p x86)
+   (destination-PML4TE-ok-p x86)
+   (destination-PML4TE-and-stack-no-interfere-p x86)
+   (destination-PML4TE-and-program-no-interfere-p x86)
+   (destination-PML4TE-itself-no-interfere-p x86)
+   (destination-PML4TE-and-stack-no-interfere-p-aux x86)
+
+   ;; Too strong?
+   (destination-PML4TE-and-source-PML4TE-no-interfere-p x86)
+   (destination-PML4TE-and-source-PDPTE-no-interfere-p x86))
+
+
+  (EQUAL
+   (ZF-SPEC
+    (LOGHEAD
+     1
+     (COMBINE-BYTES
+      (MV-NTH
+       1
+       (RB
+        (CREATE-CANONICAL-ADDRESS-LIST
+         8
+         (LOGIOR (LOGAND -4096 (LOGEXT 64 (XR :CTR *CR3* X86)))
+                 (LOGAND 4088
+                         (LOGHEAD 28 (LOGTAIL 36 (XR :RGF *RSI* X86))))))
+        :R
+        (MV-NTH
+         2
+         (RB
+          (CREATE-CANONICAL-ADDRESS-LIST
+           8
+           (LOGIOR (LOGAND -4096 (LOGEXT 64 (XR :CTR *CR3* X86)))
+                   (LOGAND 4088
+                           (LOGHEAD 28 (LOGTAIL 36 (XR :RGF *RDI* X86))))))
+          :R
+          (MV-NTH
+           2
+           (RB-ALT
+            (LIST (+ 37 (XR :RIP 0 X86)))
+            :X
+            (MV-NTH
+             2
+             (RB-ALT
+              (LIST (+ 36 (XR :RIP 0 X86)))
+              :X
+              (MV-NTH
+               2
+               (GET-PREFIXES-ALT
+                (+ 35 (XR :RIP 0 X86))
+                0 5
+                (MV-NTH
+                 2
+                 (RB-ALT
+                  (LIST (+ 34 (XR :RIP 0 X86)))
+                  :X
+                  (MV-NTH
+                   2
+                   (RB-ALT
+                    (LIST (+ 33 (XR :RIP 0 X86)))
+                    :X
+                    (MV-NTH
+                     2
+                     (GET-PREFIXES-ALT
+                      (+ 32 (XR :RIP 0 X86))
+                      0 5
+                      (MV-NTH
+                       2
+                       (RB-ALT
+                        (CREATE-CANONICAL-ADDRESS-LIST
+                         4 (+ 28 (XR :RIP 0 X86)))
+                        :X
+                        (MV-NTH
+                         2
+                         (RB-ALT
+                          (LIST (+ 27 (XR :RIP 0 X86)))
+                          :X
+                          (MV-NTH
+                           2
+                           (RB-ALT
+                            (LIST (+ 26 (XR :RIP 0 X86)))
+                            :X
+                            (MV-NTH
+                             2
+                             (GET-PREFIXES-ALT
+                              (+ 25 (XR :RIP 0 X86))
+                              0 5
+                              (MV-NTH
+                               2
+                               (RB-ALT
+                                (CREATE-CANONICAL-ADDRESS-LIST
+                                 4 (+ 21 (XR :RIP 0 X86)))
+                                :X
+                                (MV-NTH
+                                 2
+                                 (GET-PREFIXES-ALT
+                                  (+ 20 (XR :RIP 0 X86))
+                                  0 5
+                                  (MV-NTH
+                                   2
+                                   (RB-ALT
+                                    (LIST (+ 19 (XR :RIP 0 X86)))
+                                    :X
+                                    (MV-NTH
+                                     2
+                                     (RB-ALT
+                                      (LIST (+ 18 (XR :RIP 0 X86)))
+                                      :X
+                                      (MV-NTH
+                                       2
+                                       (RB-ALT
+                                        (LIST (+ 17 (XR :RIP 0 X86)))
+                                        :X
+                                        (MV-NTH
+                                         2
+                                         (GET-PREFIXES-ALT
+                                          (+ 16 (XR :RIP 0 X86))
+                                          0 5
+                                          (MV-NTH
+                                           2
+                                           (RB-ALT
+                                            (LIST (+ 15 (XR :RIP 0 X86)))
+                                            :X
+                                            (MV-NTH
+                                             2
+                                             (RB-ALT
+                                              (LIST (+ 14 (XR :RIP 0 X86)))
+                                              :X
+                                              (MV-NTH
+                                               2
+                                               (GET-PREFIXES-ALT
+                                                (+ 13 (XR :RIP 0 X86))
+                                                0 5
+                                                (MV-NTH
+                                                 2
+                                                 (RB-ALT
+                                                  (CREATE-CANONICAL-ADDRESS-LIST
+                                                   8
+                                                   (+
+                                                    -24 (XR :RGF *RSP* X86)))
+                                                  :R
+                                                  (MV-NTH
+                                                   2
+                                                   (RB-ALT
+                                                    (LIST
+                                                     (+ 12 (XR :RIP 0 X86)))
+                                                    :X
+                                                    (MV-NTH
+                                                     2
+                                                     (RB-ALT
+                                                      (LIST
+                                                       (+ 11 (XR :RIP 0 X86)))
+                                                      :X
+                                                      (MV-NTH
+                                                       2
+                                                       (RB-ALT
+                                                        (LIST
+                                                         (+
+                                                          10 (XR :RIP 0 X86)))
+                                                        :X
+                                                        (MV-NTH
+                                                         2
+                                                         (RB-ALT
+                                                          (LIST
+                                                           (+
+                                                            9
+                                                            (XR :RIP 0 X86)))
+                                                          :X
+                                                          (MV-NTH
+                                                           2
+                                                           (GET-PREFIXES-ALT
+                                                            (+
+                                                             8
+                                                             (XR :RIP 0 X86))
+                                                            0 5
+                                                            (MV-NTH
+                                                             1
+                                                             (WB
+                                                              (CREATE-ADDR-BYTES-ALIST
+                                                               (CREATE-CANONICAL-ADDRESS-LIST
+                                                                8
+                                                                (+
+                                                                 -24
+                                                                 (XR
+                                                                  :RGF
+                                                                  *RSP* X86)))
+                                                               (BYTE-IFY
+                                                                8
+                                                                (XR
+                                                                 :CTR
+                                                                 *CR3* X86)))
+                                                              (MV-NTH
+                                                               2
+                                                               (RB-ALT
+                                                                (LIST
+                                                                 (+
+                                                                  7
+                                                                  (XR :RIP
+                                                                      0 X86)))
+                                                                :X
+                                                                (MV-NTH
+                                                                 2
+                                                                 (RB-ALT
+                                                                  (LIST
+                                                                   (+
+                                                                    6
+                                                                    (XR
+                                                                     :RIP
+                                                                     0 X86)))
+                                                                  :X
+                                                                  (MV-NTH
+                                                                   2
+                                                                   (RB-ALT
+                                                                    (LIST
+                                                                     (+
+                                                                      5
+                                                                      (XR
+                                                                       :RIP 0
+                                                                       X86)))
+                                                                    :X
+                                                                    (MV-NTH
+                                                                     2
+                                                                     (RB-ALT
+                                                                      (LIST
+                                                                       (+
+                                                                        4
+                                                                        (XR
+                                                                         :RIP
+                                                                         0
+                                                                         X86)))
+                                                                      :X
+                                                                      (MV-NTH
+                                                                       2
+                                                                       (GET-PREFIXES-ALT
+                                                                        (+
+                                                                         3
+                                                                         (XR
+                                                                          :RIP
+                                                                          0
+                                                                          X86))
+                                                                        0 5
+                                                                        (MV-NTH
+                                                                         2
+                                                                         (RB-ALT
+                                                                          (LIST
+                                                                           (+
+                                                                            2
+                                                                            (XR
+                                                                             :RIP
+                                                                             0
+                                                                             X86)))
+                                                                          :X
+                                                                          (MV-NTH
+                                                                           2
+                                                                           (RB-ALT
+                                                                            (LIST
+                                                                             (+
+                                                                              1
+                                                                              (XR
+                                                                               :RIP
+                                                                               0
+                                                                               X86)))
+                                                                            :X
+                                                                            (MV-NTH
+                                                                             2
+                                                                             (GET-PREFIXES-ALT
+                                                                              (XR
+                                                                               :RIP
+                                                                               0
+                                                                               X86)
+                                                                              0
+                                                                              5
+                                                                              X86)))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
+   xxx))
+
+ :hints (("Goal"
+          :in-theory (e/d* (consp-of-create-canonical-address-list
+                            car-create-canonical-address-list
+                            cdr-create-canonical-address-list
+                            loghead-negative
+                            disjoint-p-all-translation-governing-addresses-subset-p)
+                           ((:rewrite program-at-values-and-!flgi)
+                            (:rewrite get-prefixes-opener-lemma-group-4-prefix-in-marking-mode)
+                            (:rewrite rb-in-terms-of-rb-subset-p-in-system-level-mode)
+                            (:rewrite get-prefixes-opener-lemma-group-3-prefix-in-marking-mode)
+                            (:rewrite get-prefixes-opener-lemma-group-2-prefix-in-marking-mode)
+                            (:rewrite get-prefixes-opener-lemma-group-1-prefix-in-marking-mode)
+                            ;; !!! Maybe I can afford to enable the following rule now?
+                            (:rewrite mv-nth-2-rb-in-system-level-marking-mode)
+                            (:rewrite mv-nth-1-rb-and-xlate-equiv-memory-disjoint-from-paging-structures)
+                            (:rewrite mv-nth-2-rb-in-system-level-non-marking-mode)
+                            (:rewrite rb-returns-x86-programmer-level-mode)
+                            (:linear rm-low-64-logand-logior-helper-1)
+                            (:definition n64p$inline)
+                            (:type-prescription xlate-equiv-memory)
+                            (:rewrite program-at-alt-wb-disjoint-in-system-level-mode)
+                            (:type-prescription natp-page-dir-ptr-table-entry-addr)
+                            mv-nth-1-las-to-pas-subset-p-disjoint-from-other-p-addrs))
+          :do-not '(preprocess)
+          :do-not-induct t))
+ :otf-flg t)
+
 (defthm rewire_dst_to_src-effects
   (implies
    ;; (rewire_dst_to_src-assumptions x86)
@@ -4343,6 +4676,7 @@
     (program-ok-p x86)
     (stack-ok-p x86)
     (program-and-stack-no-interfere-p x86)
+    (program-and-stack-no-interfere-p-aux x86)
     (source-addresses-ok-p x86)
     (source-PML4TE-ok-p x86)
     (source-PDPTE-ok-p x86)
@@ -4367,335 +4701,12 @@
     (destination-PML4TE-and-stack-no-interfere-p-aux x86)
 
     ;; Too strong?
+    (destination-PML4TE-and-source-PML4TE-no-interfere-p x86)
     (destination-PML4TE-and-source-PDPTE-no-interfere-p x86))
 
 
    (equal (x86-run 33 x86) ;; (rewire_dst_to_src-clk)
           xxx))
-
-  :hints (("Goal"
-           :in-theory (e/d* (consp-of-create-canonical-address-list
-                             car-create-canonical-address-list
-                             cdr-create-canonical-address-list
-                             loghead-negative
-                             disjoint-p-all-translation-governing-addresses-subset-p)
-                            ((:rewrite program-at-values-and-!flgi)
-                             (:rewrite get-prefixes-opener-lemma-group-4-prefix-in-marking-mode)
-                             (:rewrite rb-in-terms-of-rb-subset-p-in-system-level-mode)
-                             (:rewrite get-prefixes-opener-lemma-group-3-prefix-in-marking-mode)
-                             (:rewrite get-prefixes-opener-lemma-group-2-prefix-in-marking-mode)
-                             (:rewrite get-prefixes-opener-lemma-group-1-prefix-in-marking-mode)
-                             ;; !!! Maybe I can afford to enable the following rule now?
-                             (:rewrite mv-nth-2-rb-in-system-level-marking-mode)
-                             (:rewrite mv-nth-1-rb-and-xlate-equiv-memory-disjoint-from-paging-structures)
-                             (:rewrite mv-nth-2-rb-in-system-level-non-marking-mode)
-                             (:rewrite rb-returns-x86-programmer-level-mode)
-                             (:linear rm-low-64-logand-logior-helper-1)
-                             (:definition n64p$inline)
-                             (:type-prescription xlate-equiv-memory)
-                             (:rewrite program-at-alt-wb-disjoint-in-system-level-mode)
-                             (:type-prescription natp-page-dir-ptr-table-entry-addr)
-                             mv-nth-1-las-to-pas-subset-p-disjoint-from-other-p-addrs))
-           :do-not '(preprocess)
-           :do-not-induct t))
-  :otf-flg t)
-
-(defthm rewire_dst_to_src-effects
-  (implies
-   ;; (rewire_dst_to_src-assumptions x86)
-   (and
-    (x86-state-okp x86)
-    (program-ok-p x86)
-    (stack-ok-p x86)
-    (program-and-stack-no-interfere-p x86)
-    (source-addresses-ok-p x86)
-    (source-PML4TE-ok-p x86)
-    (source-PDPTE-ok-p x86)
-    (source-PML4TE-and-stack-no-interfere-p x86)
-    (source-PML4TE-and-program-no-interfere-p x86)
-    (source-PML4TE-itself-no-interfere-p x86)
-    (source-PML4TE-and-stack-no-interfere-p-aux x86)
-    (source-PDPTE-and-stack-no-interfere-p x86)
-    (source-PDPTE-and-program-no-interfere-p x86)
-    (source-PDPTE-itself-no-interfere-p x86)
-    (source-PDPTE-and-stack-no-interfere-p-aux x86)
-    ;; This is too strong ('coz equality of rbs doesn't matter, but
-    ;; xlate-equiv matters), but I'll let this lie for now.
-    (source-PDPTE-and-source-PML4E-no-interfere-p x86)
-
-
-    (destination-addresses-ok-p x86)
-    (destination-PML4TE-ok-p x86)
-    (destination-PML4TE-and-stack-no-interfere-p x86)
-    (destination-PML4TE-and-program-no-interfere-p x86)
-    (destination-PML4TE-itself-no-interfere-p x86)
-    (destination-PML4TE-and-stack-no-interfere-p-aux x86)
-
-    ;; Too strong?
-    (destination-PML4TE-and-source-PDPTE-no-interfere-p x86))
-
-
-   (EQUAL
-    (ZF-SPEC
-     (LOGHEAD
-      1
-      (COMBINE-BYTES
-       (MV-NTH
-        1
-        (RB
-         (CREATE-CANONICAL-ADDRESS-LIST
-          8
-          (LOGIOR (LOGAND -4096 (LOGEXT 64 (XR :CTR *CR3* X86)))
-                  (LOGAND 4088
-                          (LOGHEAD 28 (LOGTAIL 36 (XR :RGF *RSI* X86))))))
-         :R
-         (MV-NTH
-          2
-          (RB
-           (CREATE-CANONICAL-ADDRESS-LIST
-            8
-            (LOGIOR (LOGAND -4096 (LOGEXT 64 (XR :CTR *CR3* X86)))
-                    (LOGAND 4088
-                            (LOGHEAD 28 (LOGTAIL 36 (XR :RGF *RDI* X86))))))
-           :R
-           (MV-NTH
-            2
-            (RB-ALT
-             (LIST (+ 37 (XR :RIP 0 X86)))
-             :X
-             (MV-NTH
-              2
-              (RB-ALT
-               (LIST (+ 36 (XR :RIP 0 X86)))
-               :X
-               (MV-NTH
-                2
-                (GET-PREFIXES-ALT
-                 (+ 35 (XR :RIP 0 X86))
-                 0 5
-                 (MV-NTH
-                  2
-                  (RB-ALT
-                   (LIST (+ 34 (XR :RIP 0 X86)))
-                   :X
-                   (MV-NTH
-                    2
-                    (RB-ALT
-                     (LIST (+ 33 (XR :RIP 0 X86)))
-                     :X
-                     (MV-NTH
-                      2
-                      (GET-PREFIXES-ALT
-                       (+ 32 (XR :RIP 0 X86))
-                       0 5
-                       (MV-NTH
-                        2
-                        (RB-ALT
-                         (CREATE-CANONICAL-ADDRESS-LIST
-                          4 (+ 28 (XR :RIP 0 X86)))
-                         :X
-                         (MV-NTH
-                          2
-                          (RB-ALT
-                           (LIST (+ 27 (XR :RIP 0 X86)))
-                           :X
-                           (MV-NTH
-                            2
-                            (RB-ALT
-                             (LIST (+ 26 (XR :RIP 0 X86)))
-                             :X
-                             (MV-NTH
-                              2
-                              (GET-PREFIXES-ALT
-                               (+ 25 (XR :RIP 0 X86))
-                               0 5
-                               (MV-NTH
-                                2
-                                (RB-ALT
-                                 (CREATE-CANONICAL-ADDRESS-LIST
-                                  4 (+ 21 (XR :RIP 0 X86)))
-                                 :X
-                                 (MV-NTH
-                                  2
-                                  (GET-PREFIXES-ALT
-                                   (+ 20 (XR :RIP 0 X86))
-                                   0 5
-                                   (MV-NTH
-                                    2
-                                    (RB-ALT
-                                     (LIST (+ 19 (XR :RIP 0 X86)))
-                                     :X
-                                     (MV-NTH
-                                      2
-                                      (RB-ALT
-                                       (LIST (+ 18 (XR :RIP 0 X86)))
-                                       :X
-                                       (MV-NTH
-                                        2
-                                        (RB-ALT
-                                         (LIST (+ 17 (XR :RIP 0 X86)))
-                                         :X
-                                         (MV-NTH
-                                          2
-                                          (GET-PREFIXES-ALT
-                                           (+ 16 (XR :RIP 0 X86))
-                                           0 5
-                                           (MV-NTH
-                                            2
-                                            (RB-ALT
-                                             (LIST (+ 15 (XR :RIP 0 X86)))
-                                             :X
-                                             (MV-NTH
-                                              2
-                                              (RB-ALT
-                                               (LIST (+ 14 (XR :RIP 0 X86)))
-                                               :X
-                                               (MV-NTH
-                                                2
-                                                (GET-PREFIXES-ALT
-                                                 (+ 13 (XR :RIP 0 X86))
-                                                 0 5
-                                                 (MV-NTH
-                                                  2
-                                                  (RB-ALT
-                                                   (CREATE-CANONICAL-ADDRESS-LIST
-                                                    8
-                                                    (+
-                                                     -24 (XR :RGF *RSP* X86)))
-                                                   :R
-                                                   (MV-NTH
-                                                    2
-                                                    (RB-ALT
-                                                     (LIST
-                                                      (+ 12 (XR :RIP 0 X86)))
-                                                     :X
-                                                     (MV-NTH
-                                                      2
-                                                      (RB-ALT
-                                                       (LIST
-                                                        (+ 11 (XR :RIP 0 X86)))
-                                                       :X
-                                                       (MV-NTH
-                                                        2
-                                                        (RB-ALT
-                                                         (LIST
-                                                          (+
-                                                           10 (XR :RIP 0 X86)))
-                                                         :X
-                                                         (MV-NTH
-                                                          2
-                                                          (RB-ALT
-                                                           (LIST
-                                                            (+
-                                                             9
-                                                             (XR :RIP 0 X86)))
-                                                           :X
-                                                           (MV-NTH
-                                                            2
-                                                            (GET-PREFIXES-ALT
-                                                             (+
-                                                              8
-                                                              (XR :RIP 0 X86))
-                                                             0 5
-                                                             (MV-NTH
-                                                              1
-                                                              (WB
-                                                               (CREATE-ADDR-BYTES-ALIST
-                                                                (CREATE-CANONICAL-ADDRESS-LIST
-                                                                 8
-                                                                 (+
-                                                                  -24
-                                                                  (XR
-                                                                   :RGF
-                                                                   *RSP* X86)))
-                                                                (BYTE-IFY
-                                                                 8
-                                                                 (XR
-                                                                  :CTR
-                                                                  *CR3* X86)))
-                                                               (MV-NTH
-                                                                2
-                                                                (RB-ALT
-                                                                 (LIST
-                                                                  (+
-                                                                   7
-                                                                   (XR :RIP
-                                                                       0 X86)))
-                                                                 :X
-                                                                 (MV-NTH
-                                                                  2
-                                                                  (RB-ALT
-                                                                   (LIST
-                                                                    (+
-                                                                     6
-                                                                     (XR
-                                                                      :RIP
-                                                                      0 X86)))
-                                                                   :X
-                                                                   (MV-NTH
-                                                                    2
-                                                                    (RB-ALT
-                                                                     (LIST
-                                                                      (+
-                                                                       5
-                                                                       (XR
-                                                                        :RIP 0
-                                                                        X86)))
-                                                                     :X
-                                                                     (MV-NTH
-                                                                      2
-                                                                      (RB-ALT
-                                                                       (LIST
-                                                                        (+
-                                                                         4
-                                                                         (XR
-                                                                          :RIP
-                                                                          0
-                                                                          X86)))
-                                                                       :X
-                                                                       (MV-NTH
-                                                                        2
-                                                                        (GET-PREFIXES-ALT
-                                                                         (+
-                                                                          3
-                                                                          (XR
-                                                                           :RIP
-                                                                           0
-                                                                           X86))
-                                                                         0 5
-                                                                         (MV-NTH
-                                                                          2
-                                                                          (RB-ALT
-                                                                           (LIST
-                                                                            (+
-                                                                             2
-                                                                             (XR
-                                                                              :RIP
-                                                                              0
-                                                                              X86)))
-                                                                           :X
-                                                                           (MV-NTH
-                                                                            2
-                                                                            (RB-ALT
-                                                                             (LIST
-                                                                              (+
-                                                                               1
-                                                                               (XR
-                                                                                :RIP
-                                                                                0
-                                                                                X86)))
-                                                                             :X
-                                                                             (MV-NTH
-                                                                              2
-                                                                              (GET-PREFIXES-ALT
-                                                                               (XR
-                                                                                :RIP
-                                                                                0
-                                                                                X86)
-                                                                               0
-                                                                               5
-                                                                               X86)))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
-    xxx))
 
   :hints (("Goal"
            :in-theory (e/d* (consp-of-create-canonical-address-list
