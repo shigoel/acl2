@@ -138,10 +138,8 @@
   ///
 
   (defthm consp-of-make-nth-choice-list
-    (implies (and (consp xs)
-                  (natp n)
-                  (< n (number-of-candidates xs))
-                  (irv-ballot-p xs))
+    (implies (and (natp n)
+                  (< n (number-of-candidates xs)))
              (consp (make-nth-choice-list n xs))))
 
   (defthm consp-of-make-first-choice-occurrence-list
@@ -212,12 +210,12 @@
            (consp lst))))
 
 (acl2::defsort
- :comparablep natp
- :compare< <
- :prefix <
- :comparable-listp nat-listp
- :true-listp t
- :weak nil)
+  :comparablep natp
+  :compare< <
+  :prefix <
+  :comparable-listp nat-listp
+  :true-listp t
+  :weak nil)
 
 (define create-nth-choice-count-alist ((n natp)
                                        (xs irv-ballot-p))
@@ -246,7 +244,17 @@
 
   (defthm consp-car-of-create-0th-choice-count-alist
     (implies (and (irv-ballot-p xs) (consp xs))
-             (consp (car (create-nth-choice-count-alist 0 xs))))))
+             (consp (car (create-nth-choice-count-alist 0 xs)))))
+
+  (defthm consp-of-strip-cars-of-create-nth-choice-count-alist
+    (implies (and (< n (number-of-candidates xs))
+                  (natp n))
+             (consp (strip-cars (create-nth-choice-count-alist n xs)))))
+
+  (defthm consp-of-strip-cdrs-of-create-nth-choice-count-alist
+    (implies (and (< n (number-of-candidates xs))
+                  (natp n))
+             (consp (strip-cdrs (create-nth-choice-count-alist n xs))))))
 
 (define majority ((n natp "Number of voters"))
   :returns (maj natp
@@ -458,7 +466,6 @@
 
   (local
    (defthm all-keys-and-min-nats-lemma
-     ;; TODO: Move strip-cdrs and cdr outside min-nats to get a nicer lemma.
      (implies (all-keys (min-nats (strip-cdrs (cdr count-alst)))
                         (cdr count-alst))
               (all-keys (min-nats (strip-cdrs (cdr count-alst)))
@@ -578,14 +585,21 @@
         nil)
        (n (lnfix n))
        ((unless (< n (number-of-candidates xs)))
-        ;; When no voter records are left, then it means there was a
-        ;; tie throughout the voter preferences.  In this case, the
-        ;; first candidate in CIDs should be picked --- because CIDs
-        ;; is expected to be in ascending order, this will be the
-        ;; candidate with the smallest ID.
+        ;; When all candidates have been considered, then it means there was a
+        ;; tie throughout the voter preferences.  In this case, the first
+        ;; candidate in CIDs should be picked --- because CIDs is expected to
+        ;; be in ascending order, this will be the candidate with the smallest
+        ;; ID.
         (car cids))
        (count-alst (create-nth-choice-count-alist n xs))
        (count-alst (delete-all-pairs-but cids count-alst))
+       ((when (endp count-alst))
+        ;; TODO: Is this the right thing to do?  Maybe this doesn't matter when
+        ;; a voter is required to rank all the candidates, but it'll matter
+        ;; when a partial ranking is allowed?
+        ;; If all the candidates in this round are irrelevant, then return the
+        ;; candidate with the smallest ID from the previous round.
+        (car cids))
        (candidates-with-min-votes (candidates-with-min-votes count-alst)))
     (if (equal (len candidates-with-min-votes) 1)
         (car candidates-with-min-votes)
@@ -595,8 +609,8 @@
   ///
 
   (defthm candidates-with-min-votes-of-delete-all-pairs-but-is-a-subset-of-cids
-    ;; TODO: Ugh, why doesn't this follow directly from the lemmas
-    ;; instantiated in the hints? Use congruence-based reasoning.
+    ;; TODO: Ugh, I wish this followed directly from the lemmas instantiated in
+    ;; the hints.
     (subsetp-equal
      (candidates-with-min-votes
       (delete-all-pairs-but cids (create-nth-choice-count-alist n xs)))
@@ -658,6 +672,12 @@
              (b* ((new-xs (eliminate-candidate id xs)))
                (irv-ballot-p new-xs))))
 
+  (defthm consp-of-eliminate-candidate
+    (implies (and (irv-ballot-p xs)
+                  (< 1 (number-of-candidates xs)))
+             (consp (eliminate-candidate id xs)))
+    :hints (("Goal" :in-theory (e/d (number-of-candidates) ()))))
+
   ;; We need both remove-equal-does-not-increase-len-of-list and
   ;; remove-equal-decreases-len-of-list here.
   (defthm remove-equal-does-not-increase-len-of-list
@@ -703,7 +723,6 @@
              (< (len (acl2::flatten (eliminate-candidate id xs)))
                 (len (acl2::flatten xs))))
     :rule-classes :linear))
-
 
 (define irv ((xs irv-ballot-p))
 
@@ -876,54 +895,144 @@
              (consp (delete-all-pairs-but cids count-alst)))
     :hints (("Goal" :in-theory (e/d (delete-all-pairs-but) ()))))
 
+
+  (defthm member-of-strip-cars-create-count-alist
+    (implies
+     (member-equal e lst)
+     (member-equal e (strip-cars (create-count-alist lst))))
+    :hints (("Goal" :in-theory (e/d (create-count-alist) ()))))
+
+  (defthm nth-preference-of-the-first-voter-is-in-create-nth-choice-count-alist
+    (implies (and (consp xs)
+                  (< n (number-of-candidates xs)))
+             (member-equal (nth n (car xs))
+                           (strip-cars (create-nth-choice-count-alist n xs))))
+    :hints (("Goal" :in-theory (e/d (create-nth-choice-count-alist
+                                     create-count-alist
+                                     make-nth-choice-list)
+                                    ()))))
+
+  (defthm candidate-with-least-nth-place-votes-returns-a-natp
+    (implies
+     (and (nat-listp cids)
+          (consp cids)
+          (irv-ballot-p xs))
+     (natp (candidate-with-least-nth-place-votes n cids xs)))
+    :hints (("Goal"
+             :in-theory (e/d (candidate-with-least-nth-place-votes
+                              number-of-candidates)
+                             ())))
+    :rule-classes (:rewrite :type-prescription))
+
   ;; (i-am-here)
 
-  ;; (local
-  ;;  (defthm nth-preference-of-the-first-voter-is-in-create-nth-choice-count-alist
-  ;;    (implies (and (irv-ballot-p xs)
-  ;;                  (consp xs)
-  ;;                  (< n (number-of-candidates xs))
-  ;;                  (natp n))
-  ;;             (member-equal (nth n (car xs))
-  ;;                           (strip-cars (create-nth-choice-count-alist n xs))))
-  ;;    :hints (("Goal" :in-theory (e/d* (create-nth-choice-count-alist
-  ;;                                      create-count-alist
-  ;;                                      make-nth-choice-list)
-  ;;                                     ())))))
+  ;; (skip-proofs
+  ;;  (defthm first-choice-of-majority-p-empty-implies-more-than-one-candidate
+  ;;    ;; If FIRST-CHOICE-OF-MAJORITY-P returns nil, then xs has more
+  ;;    ;; than one candidate left (i.e., ELIMINATE-CANDIDATE can't
+  ;;    ;; return an empty or ill-formed ballot).
+  ;;    (b* ((winner-by-majority (first-choice-of-majority-p xs)))
+  ;;      (implies (and
+  ;;                ;; The following two hypotheses about xs just imply that the
+  ;;                ;; election has 1 or more contesting candidates.  We want to
+  ;;                ;; prove that the election has strictly more than 1 candidate
+  ;;                ;; contesting when no one wins by a majority.
+  ;;                (irv-ballot-p xs)
+  ;;                (consp xs)
+  ;;                (not (natp winner-by-majority)))
+  ;;               (< 1 (number-of-candidates xs))))
+  ;;    :hints (("Goal"
+  ;;             :do-not-induct t
+  ;;             :in-theory (e/d (first-choice-of-majority-p)
+  ;;                             ())))
+  ;;    :rule-classes :linear))
 
-  ;; (defthm natp-of-candidate-with-least-nth-place-votes
-  ;;   (implies (and (irv-ballot-p xs)
-  ;;                 (consp xs)
-  ;;                 (natp n))
-  ;;            (natp (candidate-with-least-nth-place-votes n (car xs) xs))
-  ;;            ;; TODO prove the following concl:
-  ;;            ;; (natp (candidate-with-least-nth-place-votes n (acl2::<-insertsort (car xs)) xs))
-  ;;            )
-  ;;   :hints (("Goal"
-  ;;            :in-theory (e/d (candidate-with-least-nth-place-votes
-  ;;                             number-of-candidates)
-  ;;                            ()))
-  ;;           ("Subgoal *1/3"
-  ;;            :in-theory (e/d* (candidate-with-least-nth-place-votes
-  ;;                              number-of-candidates)
-  ;;                             ())
-  ;;            :use ((:instance delete-all-pairs-but-returns-non-empty-alist-stricter
-  ;;                             (e (nth n (car xs)))
-  ;;                             (cids (car xs))
-  ;;                             (count-alst (create-nth-choice-count-alist n xs)))))
-  ;;           ("Subgoal *1/2"
-  ;;            :in-theory (e/d* (candidate-with-least-nth-place-votes
-  ;;                              number-of-candidates)
-  ;;                             (natp-car-of-candidates-with-min-votes))
-  ;;            :use ((:instance natp-car-of-candidates-with-min-votes
-  ;;                             (count-alst (delete-all-pairs-but
-  ;;                                          (car xs)
-  ;;                                          (create-nth-choice-count-alist n xs))))))))
-
-  ;; (defthm non-empty-ballot-returns-non-empty-irv-output
+  ;; (defthm non-empty-ballot-returns-one-winner
   ;;   (implies (and (irv-ballot-p xs) (consp xs))
-  ;;            (consp (irv xs))))
+  ;;            (natp (irv xs)))
+  ;;   :hints (("Goal" :in-theory (e/d () (irv-ballot-p)))
+  ;;           ;; TODO: Ugh, remove subgoal hint.
+  ;;           ("Subgoal *1/7" :in-theory (e/d (irv-ballot-p) ())))
+  ;;   :rule-classes (:rewrite :type-prescription))
 
   )
+
+;; ;; To prove:
+;; (defthm first-choice-of-majority-p-empty-implies-more-than-one-candidate
+;;   (b* ((winner-by-majority (first-choice-of-majority-p xs)))
+;;     (implies (and
+;;               ;; The following two hypotheses about xs just imply that the
+;;               ;; election has 1 or more contesting candidates.  We want to
+;;               ;; prove that the election has strictly more than 1 candidate
+;;               ;; contesting when no one wins by a majority.
+;;               (irv-ballot-p xs)
+;;               (consp xs)
+;;               (not (natp winner-by-majority)))
+;;              (< 1 (number-of-candidates xs))))
+;;   :hints (("Goal"
+;;            :do-not-induct t
+;;            :in-theory (e/d (first-choice-of-majority-p)
+;;                            ())))
+;;   :rule-classes :linear)
+
+;; (defthm irv-ballot-p-when-1-candidate-choice-list
+;;     ;; True, irrespective of the number of candidates...
+;;     (implies
+;;      (and (irv-ballot-p xs)
+;;           (consp xs)
+;;           (equal (number-of-candidates xs) 1))
+;;      (equal (make-nth-choice-list 0 xs)
+;;             (strip-cars xs)))
+;;     :hints (("Goal"
+;;              :in-theory (e/d (max-nats
+;;                                number-of-candidates
+;;                                number-of-voters
+;;                                make-nth-choice-list
+;;                                acl2::flatten)
+;;                               ())))
+;;     :otf-flg t)
+
+;; (defthm irv-ballot-p-when-1-candidate-has-all-the-votes
+;;   (implies
+;;    (and (irv-ballot-p xs)
+;;         (consp xs)
+;;         (equal (number-of-candidates xs) 1))
+;;    (equal (max-nats (strip-cdrs (create-nth-choice-count-alist 0 xs)))
+;;           (number-of-voters xs)))
+;;   :hints (("Goal"
+;;            :do-not-induct t
+;;            :in-theory (e/d (max-nats
+;;                             number-of-candidates
+;;                             number-of-voters
+;;                             ;; majority
+;;                             ;; create-nth-choice-count-alist
+;;                             ;; create-count-alist
+;;                             ;; make-nth-choice-list
+;;                             )
+;;                            ())))
+;;   :otf-flg t)
+
+;; (defthm max-nth-preference-vote-and-majority
+;;   (implies
+;;    (and (<= (max-nats (strip-cdrs (create-nth-choice-count-alist n xs)))
+;;             (majority (number-of-voters xs)))
+;;         (irv-ballot-p xs)
+;;         (consp xs)
+;;         (natp n)
+;;         (< n (number-of-candidates xs)))
+;;    (< 1 (number-of-candidates xs)))
+;;   :hints (("Goal"
+;;            :do-not-induct t
+;;            :in-theory (e/d (max-nats
+;;                             number-of-candidates
+;;                             number-of-voters
+;;                             majority
+;;                             create-nth-choice-count-alist
+;;                             create-count-alist
+;;                             make-nth-choice-list)
+;;                            ())))
+;;   :otf-flg t)
+
+
 
 ;; ----------------------------------------------------------------------
