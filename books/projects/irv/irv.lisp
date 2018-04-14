@@ -924,115 +924,247 @@
                              ())))
     :rule-classes (:rewrite :type-prescription))
 
-  ;; (i-am-here)
+  (encapsulate
+    ()
 
-  ;; (skip-proofs
-  ;;  (defthm first-choice-of-majority-p-empty-implies-more-than-one-candidate
-  ;;    ;; If FIRST-CHOICE-OF-MAJORITY-P returns nil, then xs has more
-  ;;    ;; than one candidate left (i.e., ELIMINATE-CANDIDATE can't
-  ;;    ;; return an empty or ill-formed ballot).
-  ;;    (b* ((winner-by-majority (first-choice-of-majority-p xs)))
-  ;;      (implies (and
-  ;;                ;; The following two hypotheses about xs just imply that the
-  ;;                ;; election has 1 or more contesting candidates.  We want to
-  ;;                ;; prove that the election has strictly more than 1 candidate
-  ;;                ;; contesting when no one wins by a majority.
-  ;;                (irv-ballot-p xs)
-  ;;                (consp xs)
-  ;;                (not (natp winner-by-majority)))
-  ;;               (< 1 (number-of-candidates xs))))
-  ;;    :hints (("Goal"
-  ;;             :do-not-induct t
-  ;;             :in-theory (e/d (first-choice-of-majority-p)
-  ;;                             ())))
-  ;;    :rule-classes :linear))
+    (defthm len-of-consp-not-zero
+      (implies (consp x)
+               (not (equal (len x) 0))))
 
-  ;; (defthm non-empty-ballot-returns-one-winner
-  ;;   (implies (and (irv-ballot-p xs) (consp xs))
-  ;;            (natp (irv xs)))
-  ;;   :hints (("Goal" :in-theory (e/d () (irv-ballot-p)))
-  ;;           ;; TODO: Ugh, remove subgoal hint.
-  ;;           ("Subgoal *1/7" :in-theory (e/d (irv-ballot-p) ())))
-  ;;   :rule-classes (:rewrite :type-prescription))
+    (local
+     (defthm number-of-candidates-is-exactly-one-lemma
+       (implies
+        (and (irv-ballot-p xs)
+             (consp xs)
+             (<= (number-of-candidates xs) 1))
+        (equal (number-of-candidates xs) 1))
+       :hints (("Goal"
+                :in-theory (e/d* (number-of-candidates)
+                                 ())))))
 
-  )
+    (local
+     (defthm choice-alist-of-0th-preference-helper-1
+       (implies (equal (len element) 1)
+                (equal (cons (car element) lst)
+                       (append element lst)))
+       :hints (("Goal" :in-theory (e/d* ()
+                                        ())))))
 
-;; ;; To prove:
-;; (defthm first-choice-of-majority-p-empty-implies-more-than-one-candidate
-;;   (b* ((winner-by-majority (first-choice-of-majority-p xs)))
-;;     (implies (and
-;;               ;; The following two hypotheses about xs just imply that the
-;;               ;; election has 1 or more contesting candidates.  We want to
-;;               ;; prove that the election has strictly more than 1 candidate
-;;               ;; contesting when no one wins by a majority.
-;;               (irv-ballot-p xs)
-;;               (consp xs)
-;;               (not (natp winner-by-majority)))
-;;              (< 1 (number-of-candidates xs))))
-;;   :hints (("Goal"
-;;            :do-not-induct t
-;;            :in-theory (e/d (first-choice-of-majority-p)
-;;                            ())))
-;;   :rule-classes :linear)
+    (local
+     (defun subset-duplicate-ind-hint (cids one)
+       (if (or (endp cids) (endp one))
+           nil
+         (b* ((element (car cids))
+              (new-cids (cdr cids))
+              (new-one (remove-equal element one)))
+           (subset-duplicate-ind-hint new-cids new-one)))))
 
-;; (defthm irv-ballot-p-when-1-candidate-choice-list
-;;     ;; True, irrespective of the number of candidates...
-;;     (implies
-;;      (and (irv-ballot-p xs)
-;;           (consp xs)
-;;           (equal (number-of-candidates xs) 1))
-;;      (equal (make-nth-choice-list 0 xs)
-;;             (strip-cars xs)))
-;;     :hints (("Goal"
-;;              :in-theory (e/d (max-nats
-;;                                number-of-candidates
-;;                                number-of-voters
-;;                                make-nth-choice-list
-;;                                acl2::flatten)
-;;                               ())))
-;;     :otf-flg t)
+    (local
+     (defthm choice-alist-of-0th-preference-helper-2-helper-helper
+       (implies (and (member-equal element one)
+                     (no-duplicatesp-equal one))
+                (equal (len one)
+                       (+ 1 (len (remove-equal element one)))))
+       :hints (("goal"
+                :in-theory (e/d* (subsetp-equal) ())))))
 
-;; (defthm irv-ballot-p-when-1-candidate-has-all-the-votes
-;;   (implies
-;;    (and (irv-ballot-p xs)
-;;         (consp xs)
-;;         (equal (number-of-candidates xs) 1))
-;;    (equal (max-nats (strip-cdrs (create-nth-choice-count-alist 0 xs)))
-;;           (number-of-voters xs)))
-;;   :hints (("Goal"
-;;            :do-not-induct t
-;;            :in-theory (e/d (max-nats
-;;                             number-of-candidates
-;;                             number-of-voters
-;;                             ;; majority
-;;                             ;; create-nth-choice-count-alist
-;;                             ;; create-count-alist
-;;                             ;; make-nth-choice-list
-;;                             )
-;;                            ())))
-;;   :otf-flg t)
+    (local
+     (defthmd choice-alist-of-0th-preference-helper-2-helper
+       (implies (and
+                 (subsetp-equal one cids)
+                 (subsetp-equal cids one)
+                 (no-duplicatesp-equal cids)
+                 (no-duplicatesp-equal one))
+                (equal (len cids) (len one)))
+       :hints (("goal"
+                :induct (subset-duplicate-ind-hint cids one)
+                :in-theory (e/d* (subsetp-equal) ())))))
 
-;; (defthm max-nth-preference-vote-and-majority
-;;   (implies
-;;    (and (<= (max-nats (strip-cdrs (create-nth-choice-count-alist n xs)))
-;;             (majority (number-of-voters xs)))
-;;         (irv-ballot-p xs)
-;;         (consp xs)
-;;         (natp n)
-;;         (< n (number-of-candidates xs)))
-;;    (< 1 (number-of-candidates xs)))
-;;   :hints (("Goal"
-;;            :do-not-induct t
-;;            :in-theory (e/d (max-nats
-;;                             number-of-candidates
-;;                             number-of-voters
-;;                             majority
-;;                             create-nth-choice-count-alist
-;;                             create-count-alist
-;;                             make-nth-choice-list)
-;;                            ())))
-;;   :otf-flg t)
+    (local
+     (defthm choice-alist-of-0th-preference-helper-2
+       (implies (and (irv-ballot-p-core cids xs)
+                     (no-duplicatesp-equal cids)
+                     (consp xs)
+                     (equal (len cids) n))
+                (equal (len (car xs)) n))
+       :hints (("Goal" :in-theory
+                (e/d* ()
+                      (choice-alist-of-0th-preference-helper-2-helper)))
+               ("Subgoal *1/1.2"
+                :use ((:instance
+                       choice-alist-of-0th-preference-helper-2-helper
+                       (cids cids)
+                       (one (car xs)))))
+               ("Subgoal *1/1.1"
+                :use ((:instance
+                       choice-alist-of-0th-preference-helper-2-helper
+                       (cids cids)
+                       (one (car xs))))))
+       :rule-classes nil))
 
+    (local
+     (defthmd choice-alist-of-0th-preference
+       (implies (and (irv-ballot-p xs)
+                     (equal (number-of-candidates xs) 1))
+                (equal (make-nth-choice-list 0 xs)
+                       (acl2::flatten xs)))
+       :hints (("Goal" :in-theory (e/d* (make-nth-choice-list
+                                         acl2::flatten
+                                         number-of-candidates)
+                                        ()))
+               ("Subgoal *1/1"
+                :use ((:instance choice-alist-of-0th-preference-helper-2
+                                 (cids (car xs))
+                                 (xs (cdr xs))
+                                 (n (len (car xs)))))))))
+
+
+    (local
+     (defthm length-of-choice-alist-of-0th-choice-list
+       (implies (irv-ballot-p xs)
+                (equal (len (make-nth-choice-list 0 xs))
+                       (number-of-voters xs)))
+       :hints (("Goal" :in-theory
+                (e/d* (make-nth-choice-list
+                       acl2::flatten
+                       number-of-candidates
+                       number-of-voters)
+                      (choice-alist-of-0th-preference))))))
+
+    (local
+     (defthm list-elements-equal-of-0th-choice-list-1-candidate
+       (implies (and (irv-ballot-p xs)
+                     (equal (number-of-candidates xs) 1))
+                (list-elements-equal
+                 (car (make-nth-choice-list 0 xs))
+                 (make-nth-choice-list 0 xs)))
+       :hints (("Goal" :in-theory
+                (e/d* (list-elements-equal
+                       make-nth-choice-list
+                       acl2::flatten
+                       number-of-candidates
+                       number-of-voters)
+                      (choice-alist-of-0th-preference))))))
+
+    (local
+     (defthmd create-count-alist-of-list-elements-equal
+       (implies (list-elements-equal e (cons e lst))
+                (equal (strip-cdrs (create-count-alist (cons e lst)))
+                       (list (len (cons e lst)))))
+       :hints (("Goal" :in-theory (e/d* (create-count-alist
+                                         list-elements-equal)
+                                        ())))))
+
+    (local
+     (defthm create-count-alist-of-list-elements-equal-corollary
+       (implies (and (list-elements-equal (car lst) lst)
+                     (consp lst))
+                (equal (strip-cdrs (create-count-alist lst))
+                       (list (len lst))))
+       :hints (("Goal" :in-theory
+                (e/d* (create-count-alist-of-list-elements-equal)
+                      ())))))
+
+    (local
+     (defthm max-nats-of-list
+       (implies (natp e)
+                (equal (max-nats (list e)) e))
+       :hints (("Goal" :in-theory (e/d* (max-nats) ())))))
+
+
+    (local
+     (defthm list-elements-equal-and-<-insertsort
+       (implies (list-elements-equal e lst)
+                (list-elements-equal e (acl2::<-insertsort lst)))
+       :hints (("Goal" :in-theory (e/d* (list-elements-equal
+                                         acl2::<-insertsort
+                                         acl2::<-insert)
+                                        ())))))
+
+
+    (local
+     (defthm one-element-of-list-elements-equal-and-<-insertsort
+       (implies (and (list-elements-equal e lst) (consp lst))
+                (equal (car (acl2::<-insertsort lst)) e))
+       :hints (("Goal" :in-theory (e/d* (list-elements-equal
+                                         acl2::<-insertsort
+                                         acl2::<-insert)
+                                        ())))))
+                                 
+
+    (defthm first-choice-of-majority-p-empty-implies-more-than-one-candidate-helper
+      (implies
+       (and (irv-ballot-p xs)
+            (consp xs)
+            (equal (number-of-candidates xs) 1))
+       (equal (max-nats (strip-cdrs (create-nth-choice-count-alist 0 xs)))
+              (number-of-voters xs)))
+      :hints
+      (("Goal"
+        :do-not-induct t
+        :use
+        ((:instance
+          create-count-alist-of-list-elements-equal-corollary
+          (lst (acl2::<-insertsort (make-nth-choice-list 0 xs))))
+         (:instance list-elements-equal-of-0th-choice-list-1-candidate))
+        :in-theory
+        (e/d*
+         (create-nth-choice-count-alist)
+         (create-count-alist-of-list-elements-equal-corollary
+          list-elements-equal-of-0th-choice-list-1-candidate)))))
+
+    (defthm majority-is-less-than-total
+      (implies (posp n)
+               (< (majority n) n))
+      :hints (("Goal" :in-theory (e/d* (majority) ())))))
+
+  (defthm first-choice-of-majority-p-empty-implies-more-than-one-candidate-helper-2
+    (implies
+     (and (nat-listp (car xs))
+          (consp (car xs))
+          (no-duplicatesp-equal (car xs))
+          (irv-ballot-p-core (car xs) (cdr xs))
+          (consp xs)
+          (<= (number-of-candidates xs) 1))
+     (< (majority (number-of-voters xs))
+        (max-nats (strip-cdrs (create-nth-choice-count-alist 0 xs)))))
+    :hints
+    (("Goal"
+      :use ((:instance first-choice-of-majority-p-empty-implies-more-than-one-candidate-helper)
+            (:instance majority-is-less-than-total
+                       (n (number-of-voters xs))))
+      :in-theory
+      (e/d* (posp
+             number-of-voters
+             number-of-candidates)
+            (first-choice-of-majority-p-empty-implies-more-than-one-candidate-helper
+             majority-is-less-than-total)))))
+                                   
+
+  (defthm first-choice-of-majority-p-empty-implies-more-than-one-candidate
+    (b* ((winner-by-majority (first-choice-of-majority-p xs)))
+      (implies (and
+                ;; The following two hypotheses about xs just imply that the
+                ;; election has 1 or more contesting candidates.  We want to
+                ;; prove that the election has strictly more than 1 candidate
+                ;; contesting when no one wins by a majority.
+                (irv-ballot-p xs)
+                (consp xs)
+                (not (natp winner-by-majority)))
+               (< 1 (number-of-candidates xs))))
+    :hints (("Goal"
+             :do-not-induct t
+             :in-theory (e/d (first-choice-of-majority-p)
+                             ())))
+    :rule-classes :linear)
+
+  (defthm non-empty-ballot-returns-one-winner
+    (implies (and (irv-ballot-p xs) (consp xs))
+             (natp (irv xs)))
+    :hints (("Goal" :in-theory (e/d () (irv-ballot-p)))
+            ;; TODO: Ugh, remove subgoal hint.
+            ("Subgoal *1/7" :in-theory (e/d (irv-ballot-p) ())))
+    :rule-classes (:rewrite :type-prescription)))
 
 
 ;; ----------------------------------------------------------------------
