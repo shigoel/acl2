@@ -241,7 +241,19 @@
 
 (define number-of-candidates ((xs irv-ballot-p))
   :returns (num natp :rule-classes :type-prescription)
-  (len (candidate-ids xs)))
+  (len (candidate-ids xs))
+
+  ///
+
+  (defthmd number-of-candidates-is-exactly-one-lemma
+    (implies
+     (and (irv-ballot-p xs)
+          (consp xs)
+          (<= (number-of-candidates xs) 1))
+     (equal (number-of-candidates xs) 1))
+    :hints (("Goal"
+             :in-theory (e/d* (candidate-ids)
+                              ())))))
 
 (define number-of-voters ((xs irv-ballot-p))
   :returns (num natp :rule-classes :type-prescription)
@@ -802,7 +814,16 @@
 
   (defthm candidate-with-least-nth-place-votes-is-in-cids
     (b* ((cid (candidate-with-least-nth-place-votes n cids xs)))
-      (implies cid (member-equal cid cids)))))
+      (implies cid (member-equal cid cids))))
+
+  (defthm candidate-with-least-nth-place-votes-returns-a-natp
+    (implies
+     (and (nat-listp cids)
+          (consp cids)
+          (irv-ballot-p xs))
+     (natp (candidate-with-least-nth-place-votes n cids xs)))
+    :hints (("Goal" :in-theory (e/d (number-of-candidates) ())))
+    :rule-classes (:rewrite :type-prescription)))
 
 (define eliminate-candidate ((id natp "Candidate ID")
                              (xs irv-ballot-p))
@@ -841,30 +862,6 @@
                    (candidate-ids xs))
     :hints (("Goal" :in-theory (e/d* (candidate-ids) ()))))
 
-  ;; We need both remove-equal-does-not-increase-len-of-list and
-  ;; remove-equal-decreases-len-of-list here.
-  ;; (defthm remove-equal-does-not-increase-len-of-list
-  ;;   (<= (len (remove-equal id lst))
-  ;;       (len lst))
-  ;;   :rule-classes :linear)
-
-  ;; (defthm remove-equal-decreases-len-of-list
-  ;;   (implies (member-equal id lst)
-  ;;            (< (len (remove-equal id lst))
-  ;;               (len lst)))
-  ;;   :rule-classes :linear)
-
-  ;; (defthm len-of-flatten-list-is-more-than-len-of-a-sublist
-  ;;   (<= (len (car xs))
-  ;;       (len (acl2::flatten xs)))
-  ;;   :hints (("Goal" :in-theory (e/d (acl2::flatten) ()))))
-
-  ;; (local
-  ;;  (defthm flatten-list-with-one-element
-  ;;    (implies (equal (cdr xs) nil)
-  ;;             (equal (len (acl2::flatten xs))
-  ;;                    (len (car xs))))))
-
   (local
    (defthm remove-equal-when-not-a-member
      (implies (and (true-listp xs)
@@ -891,48 +888,6 @@
                    (true-listp flattened-original-xs))
               (not (natp id)))))
 
-  ;; (local
-  ;;  (defthm len-of-sets-equal-when-no-duplicates
-  ;;    (implies (and (subsetp-equal x y)
-  ;;                  (equal (len x) (len y))
-  ;;                  (no-duplicatesp-equal x)
-  ;;                  (no-duplicatesp-equal y))
-  ;;             (subsetp-equal y x))
-  ;;    :hints (("Goal"
-  ;;             :in-theory (e/d* (subsetp-equal member-equal len)
-  ;;                              ())))))
-
-
-  ;; (i-am-here)
-
-  ;; (local
-  ;;  (defthm len-of-subset-is-less-when-no-duplicates
-  ;;    (implies (and (subsetp-equal x y)
-  ;;                  ;; (not (subsetp-equal y x))
-  ;;                  (not (member-equal id x))
-  ;;                  (member-equal id y)
-  ;;                  (no-duplicatesp-equal x)
-  ;;                  (no-duplicatesp-equal y))
-  ;;             (< (len x) (len y)))
-  ;;    :hints (("Goal"
-  ;;             :in-theory (e/d* (subsetp-equal member-equal len)
-  ;;                              ())))
-  ;;    :rule-classes :linear))
-
-  (skip-proofs
-   ;; TODO!!
-   (local
-    (defthmd member-equal-and-len
-      (implies (and (member-equal id flattened-old-xs)
-                    (not (member-equal id flattened-new-xs))
-                    (subsetp-equal flattened-new-xs flattened-old-xs)
-                    (true-listp flattened-old-xs)
-                    (no-duplicatesp-equal flattened-old-xs)
-                    (no-duplicatesp-equal flattened-new-xs)
-                    (natp id))
-               (< (len flattened-new-xs) (len flattened-old-xs)))
-      :hints (("Goal" :in-theory (e/d* (len subsetp-equal) ()))))))
-
   (local
    (defthm member-of-nat-listp-is-a-natp
      (implies (and (member-equal id lst)
@@ -947,7 +902,46 @@
                                      ()))))
 
   (local
-   (defthm eliminate-candidate-removes-exactly-one-candidate-helper-1
+   (defthm remove-equal-no-duplicatesp-equal-and-len-lemma
+     (implies (and (no-duplicatesp-equal old)
+                   (member-equal e old))
+              (equal (len (remove-equal e old))
+                     (1- (len old))))
+     :hints (("Goal" :in-theory (e/d* (remove-equal
+                                       no-duplicatesp-equal
+                                       len)
+                                      ())))))
+
+  (local
+   (defun proper-subset-ind-hint (sub super)
+     (if (endp sub)
+         super
+       (proper-subset-ind-hint
+        (cdr sub)
+        (remove-equal (car sub) super)))))
+
+  (local
+   (defthmd len-of-proper-subset-is-less-than-its-superset-when-no-duplicates
+     (implies (and (member-equal id flattened-old-xs)
+                   (not (member-equal id flattened-new-xs))
+                   (subsetp-equal flattened-new-xs flattened-old-xs)
+                   (true-listp flattened-old-xs)
+                   (no-duplicatesp-equal flattened-old-xs)
+                   (no-duplicatesp-equal flattened-new-xs)
+                   (natp id))
+              (< (len flattened-new-xs) (len flattened-old-xs)))
+     :hints (("Goal"
+              :induct (proper-subset-ind-hint
+                       flattened-new-xs
+                       flattened-old-xs)
+              :in-theory (e/d* (len subsetp-equal)
+                               ((:induction member-equal)
+                                (:induction no-duplicatesp-equal)
+                                (:induction true-listp)
+                                (:induction subsetp-equal)))))))
+
+  (local
+   (defthm eliminate-candidate-reduces-the-number-of-candidates-helper-1
      (and
       (implies
        (and
@@ -991,7 +985,7 @@
               :in-theory (e/d* (number-of-candidates candidate-ids) ())))))
 
   (local
-   (defthm eliminate-candidate-removes-exactly-one-candidate-helper-2
+   (defthm eliminate-candidate-reduces-the-number-of-candidates-helper-2
      (implies
       (and (not (subsetp-equal (acl2::flatten (eliminate-candidate id xs))
                                (acl2::flatten xs)))
@@ -1009,21 +1003,23 @@
               :in-theory (e/d* (number-of-candidates candidate-ids)
                                (eliminate-candidate-returns-a-subset-of-candidates))))))
 
-  (defthm eliminate-candidate-removes-exactly-one-candidate
+  (defthm eliminate-candidate-reduces-the-number-of-candidates
     (implies (and (irv-ballot-p xs)
                   (member-equal id (candidate-ids xs)))
              (< (number-of-candidates (eliminate-candidate id xs))
                 (number-of-candidates xs)))
-    :hints (("Goal"
-             :do-not-induct t
-             :use ((:instance member-equal-and-len
-                              (flattened-old-xs
-                               (remove-duplicates-equal (acl2::flatten xs)))
-                              (flattened-new-xs
-                               (remove-duplicates-equal (acl2::flatten (eliminate-candidate id xs)))))
-                   (:instance eliminate-candidate-does-remove-a-candidate))
-             :in-theory (e/d ()
-                             (eliminate-candidate-does-remove-a-candidate))))
+    :hints
+    (("Goal"
+      :do-not-induct t
+      :use ((:instance len-of-proper-subset-is-less-than-its-superset-when-no-duplicates
+                       (flattened-old-xs
+                        (remove-duplicates-equal (acl2::flatten xs)))
+                       (flattened-new-xs
+                        (remove-duplicates-equal
+                         (acl2::flatten (eliminate-candidate id xs)))))
+            (:instance eliminate-candidate-does-remove-a-candidate))
+      :in-theory (e/d ()
+                      (eliminate-candidate-does-remove-a-candidate))))
     :rule-classes :linear)
 
   (local
@@ -1033,6 +1029,25 @@
                    (irv-ballot-p xs))
               (consp (eliminate-candidate id xs)))
      :rule-classes (:rewrite :type-prescription)))
+
+  ;; (i-am-here)
+
+
+  ;; (defthm eliminate-candidate-reduces-the-number-of-candidates-by-one
+  ;;   (implies (and (irv-ballot-p xs)
+  ;;                 (member-equal id (candidate-ids xs)))
+  ;;            (equal (number-of-candidates (eliminate-candidate id xs))
+  ;;                   (1- (number-of-candidates xs))))
+  ;;   :hints (("Goal" :in-theory (e/d* (number-of-candidates
+  ;;                                     candidate-ids)
+  ;;                                    ()))))
+
+  ;; (defthm eliminate-candidate-leaves-the-other-candidates-intact
+  ;;   (implies (and (irv-ballot-p xs)
+  ;;                 (consp xs))
+  ;;            (equal (candidate-ids (eliminate-candidate id xs))
+  ;;                   (remove-equal id (candidate-ids xs))))
+  ;;   :hints (("Goal" :in-theory (e/d* (candidate-ids) ()))))
 
   ;; (local
   ;;  (defthm consp-of-eliminate-candidate-when-elimination
@@ -1086,10 +1101,7 @@
                                               xs)))
        (not (natp (pick-candidate-among-those-with-same-number-of-first-place-votes
                    (candidate-ids xs)
-                   xs)))
-       (member-equal (candidate-with-least-nth-place-votes 0 (candidate-ids xs)
-                                                           xs)
-                     (acl2::flatten xs)))
+                   xs))))
       (< (number-of-candidates
           (eliminate-candidate
            (candidate-with-least-nth-place-votes 0 (candidate-ids xs)
@@ -1223,18 +1235,6 @@
   ;;                                    create-count-alist
   ;;                                    make-nth-choice-list)
   ;;                                   ()))))
-
-  (defthm candidate-with-least-nth-place-votes-returns-a-natp
-    (implies
-     (and (nat-listp cids)
-          (consp cids)
-          (irv-ballot-p xs))
-     (natp (candidate-with-least-nth-place-votes n cids xs)))
-    :hints (("Goal"
-             :in-theory (e/d (candidate-with-least-nth-place-votes
-                              number-of-candidates)
-                             ())))
-    :rule-classes (:rewrite :type-prescription))
 
   ;; (encapsulate
   ;;   ()
