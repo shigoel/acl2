@@ -6,8 +6,10 @@
 (include-book "std/util/define" :dir :system)
 (include-book "std/basic/defs"  :dir :system)
 (include-book "std/lists/sets"  :dir :system)
+(include-book "std/lists/intersectp"  :dir :system)
 (include-book "std/lists/flatten"  :dir :system)
 (include-book "std/lists/duplicity"  :dir :system)
+(include-book "std/lists/remove-duplicates"  :dir :system)
 (include-book "std/lists/nth"  :dir :system)
 (include-book "defsort/defsort" :dir :system)
 
@@ -16,7 +18,7 @@
 ;; The winner will be chosen as follows.
 
 ;;   (1) If a candidate is the first choice of more than half of the voters,
-;;       then it wins.  Otherwise:
+;;       then he/she wins.  Otherwise:
 
 ;;   (2) If every remaining candidate has the same number of first-place
 ;;       votes, pick the one with the smallest ID.  Otherwise:
@@ -30,88 +32,243 @@
 ;;   (4) Go to (1).
 
 ;; ----------------------------------------------------------------------
+
+(defxdoc irv
+  :parents (acl2::projects)
+  :short "Reasoning about an Instant-Runoff Voting Algorithm"
+  )
+
+(local (xdoc::set-default-parents irv))
+
+;; ----------------------------------------------------------------------
 ;; Recognizer for a well-formed IRV ballot
 ;; ----------------------------------------------------------------------
 
-(define irv-ballot-p-core
-  ((cids nat-listp "List of candidate IDs currently in the election")
-   xs)
-  :guard (consp cids)
-  :short "Core function for recognizing a well-formed IRV ballot"
+(define non-empty-true-list-listp (x)
+  :enabled t
+  :short "Similar to @(see true-list-listp), except that if @('x') is
+  non-empty, each element of @('x') must be a @(see consp)."
+  (cond ((atom x) (eq x nil))
+        (t (and (true-listp (car x))
+                (consp (car x))
+                (non-empty-true-list-listp (cdr x)))))
+
+  ///
+
+  (defthm non-empty-true-list-listp-implies-true-listp
+    (implies (non-empty-true-list-listp xs)
+             (true-listp xs))
+    :rule-classes :forward-chaining)
+
+  (defthm non-empty-true-list-listp-implies-true-list-listp
+    (implies (non-empty-true-list-listp x)
+             (true-list-listp x))
+    :rule-classes :forward-chaining)
+
+  (defthm non-empty-true-list-listp-bigger-implies-smaller
+    (implies (non-empty-true-list-listp xs)
+             (non-empty-true-list-listp (cdr xs)))))
+
+(define irv-ballot-p (xs)
+  :short "Recognizer for a well-formed IRV ballot"
   :enabled t
   (if (consp xs)
       (b* ((one (car xs))
            (rest (cdr xs)))
         (and
-         ;; cids is the list of candidate IDs currently in the
-         ;; election at --- there must be at least one candidate in
-         ;; the election at this point.  Each voter must rank *all*
-         ;; the candidates. The preferences of a voter must satisfy
-         ;; the following constraints: a voter should not list a
-         ;; candidate more than once, and the preferences should be
-         ;; some permutation of the cids.
+         ;; There must be at least one candidate in the election at
+         ;; this point.  Each voter may or may not rank all the
+         ;; candidates. The preferences of a voter must satisfy the
+         ;; following constraints: a voter should not list a candidate
+         ;; more than once and should list at least one candidate.
          (nat-listp one)
-         (subsetp-equal one cids)
-         (subsetp-equal cids one)
+         (consp one)
          (no-duplicatesp-equal one)
-         (irv-ballot-p-core cids rest)))
+         (irv-ballot-p rest)))
     (equal xs nil))
 
   ///
 
-  (defthm irv-ballot-p-core-cdr
-    (implies (irv-ballot-p-core cids xs)
-             (irv-ballot-p-core cids (cdr xs))))
-
-  (defthm irv-ballot-p-core-equiv
-    (implies (and (nat-listp cids1)
-                  (consp cids1)
-                  (no-duplicatesp-equal cids1)
-                  (nat-listp cids2)
-                  (no-duplicatesp-equal cids2)
-                  (subsetp-equal cids2 cids1)
-                  (subsetp-equal cids1 cids2)
-                  (irv-ballot-p-core cids1 xs))
-             (irv-ballot-p-core cids2 xs))))
-
-(define irv-ballot-p (xs)
-  :enabled t
-  :short "The recognizer for a well-formed IRV ballot structure"
-  :long "<p>A candidate is identified by his ID, which is a natural
-  number.  Each element of @('xs') must be a list of natural numbers,
-  which represents the preferences of one voter. The position of the
-  candidate ID in this list denotes his rank.  For example, if a
-  voter's preferences are @('(100 0 5)'), then candidates 100, 0, and
-  5 are his first, second, and third preferences, respectively.</p>"
-  (if (consp xs)
-      (b* ((one (car xs)))
-        (and (nat-listp one)
-             (consp one)
-             (no-duplicatesp-equal one)
-             (irv-ballot-p-core one (cdr xs))))
-    (equal xs nil))
-
-  ///
-
-  (defthm irv-ballot-p-implies-true-list-listp
+  (defthm irv-ballot-p-implies-non-empty-true-list-listp
     (implies (irv-ballot-p xs)
-             (true-list-listp xs)))
+             (non-empty-true-list-listp xs))
+    :rule-classes :forward-chaining)
 
   (defthm irv-ballot-p-cdr
     (implies (irv-ballot-p xs)
              (irv-ballot-p (cdr xs)))))
 
-;; ----------------------------------------------------------------------
-;; Implementation of the IRV algorithm
-;; ----------------------------------------------------------------------
+(defsection sorting
+
+  :parents (irv)
+
+  (acl2::defsort
+   :comparablep natp
+   :compare< <
+   :prefix <
+   :comparable-listp nat-listp
+   :true-listp t
+   :weak nil)
+
+  ;; (defthm set-equiv-implies-equal-nat-listp
+  ;;   (implies (acl2::set-equiv x y)
+  ;;            (iff (nat-listp x)
+  ;;                 (nat-listp y)))
+  ;;   :hints (("Goal" :in-theory (e/d (acl2::set-equiv
+  ;;                                     nat-listp
+  ;;                                     subsetp-equal)
+  ;;                                    ())))
+  ;;   :rule-classes :congruence)
+
+  (local
+   (defthm member-equal-and-insert-sort
+     (implies (consp a)
+              (member-equal (car a) (acl2::<-insertsort a)))
+     :hints (("Goal" :in-theory (e/d (acl2::<-insertsort
+                                       acl2::<-insert)
+                                      ())))))
+
+  (defthm subsetp-cdr-and-<-insertsort
+    (subsetp-equal (acl2::<-insertsort (cdr a))
+                   (acl2::<-insertsort a))
+    :hints (("Goal" :in-theory (e/d (acl2::<-insertsort
+                                      acl2::<-insert
+                                      subsetp-equal)
+                                     ()))))
+
+  (defthmd a-is-a-subset-of-<-insertsort-a
+    (subsetp-equal a (acl2::<-insertsort a))
+    :hints (("Goal" :in-theory (e/d (subsetp-equal
+                                      member-equal)
+                                     ()))))
+
+  (defthmd <-insertsort-a-is-a-subset-of-a
+    (subsetp-equal (acl2::<-insertsort a) a)
+    :hints (("Goal" :in-theory (e/d (subsetp-equal
+                                      member-equal
+                                      acl2::<-insertsort
+                                      acl2::<-insert)
+                                     ()))))
+
+  (defthm <-insertsort-equal-under-set-equiv
+    (acl2::set-equiv (acl2::<-insertsort a) a)
+    :hints (("Goal" :in-theory (e/d (<-insertsort-a-is-a-subset-of-a
+                                      a-is-a-subset-of-<-insertsort-a
+                                      acl2::set-equiv)
+                                     ())))))
+
+(define candidate-ids ((xs irv-ballot-p))
+  :short "Get a sorted list of candidate IDs currently in the election"
+  :returns (cids true-listp :rule-classes :type-prescription)
+
+  (acl2::<-sort (remove-duplicates-equal (acl2::flatten xs)))
+
+  ///
+
+  (local
+   (defthm nat-listp-of-candidate-ids-helper
+     (implies (irv-ballot-p xs)
+              (nat-listp (remove-duplicates-equal (acl2::flatten xs))))
+     :hints (("Goal" :in-theory (e/d (nat-listp acl2::flatten) ())))))
+
+  (defthm nat-listp-of-candidate-ids
+    (implies (irv-ballot-p xs)
+             (nat-listp (candidate-ids xs)))
+    :hints (("Goal"
+             :do-not-induct t
+             :in-theory (e/d ()
+                              (remove-duplicates-equal
+                               acl2::flatten)))))
+
+  (local
+   (defthm consp-of-candidate-ids-helper
+     (implies
+      (and (non-empty-true-list-listp xs)
+           (consp xs))
+      (consp (acl2::flatten xs)))
+     :hints (("Goal" :in-theory (e/d (acl2::flatten) ())))
+     :rule-classes :type-prescription))
+
+  (defthm consp-of-candidate-ids
+    (implies
+     (and (non-empty-true-list-listp xs)
+          (consp xs))
+     (consp (candidate-ids xs)))
+    :hints (("Goal"
+             :do-not-induct t
+             :in-theory (e/d () (acl2::flatten))))
+    :rule-classes :type-prescription)
+
+  (defthm subset-of-candidate-ids-cdr
+    (subsetp-equal (candidate-ids (cdr xs))
+                   (candidate-ids xs)))
+
+  (defthmd nat-listp-and-subsetp-equal
+    (implies (and (subsetp-equal x y)
+                  (true-listp x)
+                  (nat-listp y))
+             (nat-listp x))
+    :hints (("Goal" :in-theory (e/d (nat-listp subsetp-equal)
+                                     ()))))
+
+  (defthm candidate-ids-nat-listp-smaller
+    (implies (nat-listp (candidate-ids xs))
+             (nat-listp (candidate-ids (cdr xs))))
+    :hints (("Goal"
+             :use ((:instance subset-of-candidate-ids-cdr)
+                   (:instance nat-listp-and-subsetp-equal
+                              (x (candidate-ids (cdr xs)))
+                              (y (candidate-ids xs))))
+             :in-theory (e/d ()
+                              (subset-of-candidate-ids-cdr)))))
+
+  (local
+   (defthm subset-of-flatten-helper
+     (implies (member-equal y xs)
+              (subsetp-equal y (acl2::flatten xs)))
+     :hints (("Goal"
+              :in-theory (e/d (subsetp-equal acl2::flatten) ())))))
+
+  (defthm subset-of-flatten
+    (implies (subsetp-equal ys xs)
+             (subsetp-equal (acl2::flatten ys) (acl2::flatten xs)))
+    :hints (("Goal"
+             :in-theory (e/d (subsetp-equal acl2::flatten) ()))))
+
+  (defthm subsetp-of-irv-ballots-implies-subsetp-of-candidate-ids
+    (implies (subsetp-equal ys xs)
+             (subsetp-equal (candidate-ids ys)
+                            (candidate-ids xs)))
+    :hints (("Goal" :in-theory (e/d (acl2::flatten) ()))))
+
+  (defthm no-duplicates-in-candidate-ids
+    (no-duplicatesp-equal (candidate-ids xs))
+    :hints (("Goal" :in-theory (e/d (no-duplicatesp-equal)
+                                     ())))))
 
 (define number-of-candidates ((xs irv-ballot-p))
   :returns (num natp :rule-classes :type-prescription)
-  (len (car xs)))
+  (len (candidate-ids xs))
+
+  ///
+
+  (defthmd number-of-candidates-is-exactly-one-lemma
+    (implies
+     (and (irv-ballot-p xs)
+          (consp xs)
+          (<= (number-of-candidates xs) 1))
+     (equal (number-of-candidates xs) 1))
+    :hints (("Goal"
+             :in-theory (e/d (candidate-ids)
+                              ())))))
 
 (define number-of-voters ((xs irv-ballot-p))
   :returns (num natp :rule-classes :type-prescription)
   (len xs))
+
+;; ----------------------------------------------------------------------
+;; Implementation of the IRV algorithm
+;; ----------------------------------------------------------------------
 
 (define make-nth-choice-list ((n natp)
                               (xs irv-ballot-p))
@@ -130,22 +287,34 @@
 
   :returns (choice-lst nat-listp :hyp :guard)
 
-  (if (or (endp xs)
-          (not (< n (number-of-candidates xs))))
+  (if (endp xs)
       nil
-    (cons (nth n (car xs)) ;; nth choice of the first voter
-          (make-nth-choice-list n (cdr xs))))
+    (if (< n (len (car xs)))
+        ;; If the first voter ranked less than n candidates, then skip
+        ;; that voter and collect nth choices for the rest of the
+        ;; voters.
+        (cons (nth n (car xs)) ;; nth choice of the first voter
+              (make-nth-choice-list n (cdr xs)))
+      (make-nth-choice-list n (cdr xs))))
+
   ///
 
-  (defthm consp-of-make-nth-choice-list
-    (implies (and (natp n)
-                  (< n (number-of-candidates xs)))
-             (consp (make-nth-choice-list n xs))))
-
-  (defthm consp-of-make-first-choice-occurrence-list
+  (defthm consp-of-0th-choice-occurrence-list
     (implies (and (consp xs)
                   (irv-ballot-p xs))
-             (consp (make-nth-choice-list 0 xs)))))
+             (consp (make-nth-choice-list 0 xs)))
+    :rule-classes :type-prescription)
+
+  (defthm make-nth-choice-list-returns-subset-of-all-cids
+    (implies (and (irv-ballot-p xs) (natp n))
+             (subsetp-equal (make-nth-choice-list n xs)
+                            (candidate-ids xs)))
+    :hints (("Goal" :in-theory (e/d (number-of-candidates
+                                     candidate-ids
+                                     acl2::flatten
+                                     remove-duplicates-equal
+                                     len)
+                                    ())))))
 
 (define count-alistp (l)
   :enabled t
@@ -172,89 +341,64 @@
     (implies (and (count-alistp alst) (consp alst))
              (natp (caar alst)))))
 
-(define create-count-alist ((choice-lst nat-listp))
-  :short "Given a choice list, maps each candidate ID to the number of
-  votes they obtained"
+(define create-count-alist ((cids nat-listp "All the candidates in the election, sorted")
+                            (choice-lst nat-listp))
+  :short "Given a choice list, maps each candidate ID to the number
+  of votes they obtained"
   :returns (count-alst alistp)
-  (if (endp choice-lst)
+
+  (if (endp cids)
       nil
-    (b* ((one (car choice-lst))
-         (count (acl2::duplicity one choice-lst))
-         (rest (remove-equal one choice-lst)))
-      (cons (cons one count)
-            (create-count-alist rest))))
+    (b* ((cid (car cids))
+         (count (acl2::duplicity cid choice-lst)))
+      (cons (cons cid count)
+            (create-count-alist (cdr cids) choice-lst))))
   ///
 
-  (defthm nat-listp-of-remove-equal
-    (implies (nat-listp choice-lst)
-             (nat-listp (remove-equal e choice-lst))))
-
   (defret count-alistp-of-create-count-alist
-    (implies (nat-listp choice-lst)
+    (implies (nat-listp cids)
              (count-alistp count-alst)))
 
   (defthm consp-of-create-count-alist
-    (equal (consp (create-count-alist lst))
-           (consp lst)))
+    (equal (consp (create-count-alist cids choice-lst))
+           (consp cids)))
 
-  (defthm consp-of-car-of-create-count-alist
-    (equal (consp (car (create-count-alist lst)))
-           (consp lst)))
+  (defthm strip-cars-of-create-count-alist-is-sorted-if-cids-is-sorted
+    (implies (acl2::<-ordered-p cids)
+             (acl2::<-ordered-p (strip-cars (create-count-alist cids choice-lst))))
+    :hints (("Goal" :in-theory (e/d (acl2::<-ordered-p) ()))))
 
-  (defthm consp-of-strip-cars-of-create-count-alist
-    (equal (consp (strip-cars (create-count-alist lst)))
-           (consp lst)))
+  (defthm strip-cars-of-create-count-alist-equal-under-set-equiv
+    (acl2::set-equiv (strip-cars (create-count-alist cids choice-lst)) cids)
+    :hints (("Goal" :in-theory (e/d (acl2::set-equiv) ())))))
 
-  (defthm consp-of-strip-cdrs-of-create-count-alist
-    (equal (consp (strip-cdrs (create-count-alist lst)))
-           (consp lst))))
+(define create-nth-choice-count-alist
+  ((n natp)
+   (cids nat-listp "All the candidates in the election, sorted")
+   (xs irv-ballot-p))
 
-(acl2::defsort
-  :comparablep natp
-  :compare< <
-  :prefix <
-  :comparable-listp nat-listp
-  :true-listp t
-  :weak nil)
-
-(define create-nth-choice-count-alist ((n natp)
-                                       (xs irv-ballot-p))
   :returns (count-alst alistp)
 
-  (b* ((choice-lst (acl2::<-sort (make-nth-choice-list n xs)))
-       (count-alst (create-count-alist choice-lst)))
+  (b* ((choice-lst (make-nth-choice-list n xs))
+       (count-alst (create-count-alist cids choice-lst)))
     count-alst)
 
   ///
 
   (defret count-alistp-of-create-nth-choice-count-alist
-    (implies (and (irv-ballot-p xs)
-                  (natp n))
+    (implies (nat-listp cids)
              (count-alistp count-alst)))
 
+  (defret strip-cars-of-create-nth-choice-count-alist-is-sorted-if-cids-is-sorted
+    (implies (acl2::<-ordered-p cids)
+             (acl2::<-ordered-p (strip-cars count-alst))))
+
   (defthm consp-of-create-nth-choice-count-alist
-    (implies (and (< n (number-of-candidates xs))
-                  (irv-ballot-p xs)
-                  (natp n))
-             (consp (create-nth-choice-count-alist n xs))))
+    (equal (consp (create-nth-choice-count-alist 0 cids xs))
+           (consp cids)))
 
-  (defthm consp-of-create-0th-choice-count-alist
-    (implies (and (irv-ballot-p xs) (consp xs))
-             (consp (create-nth-choice-count-alist 0 xs))))
-
-  (defthm consp-car-of-create-0th-choice-count-alist
-    (implies (and (irv-ballot-p xs) (consp xs))
-             (consp (car (create-nth-choice-count-alist 0 xs)))))
-
-  (defthm consp-of-strip-cars-of-create-nth-choice-count-alist
-    (implies (and (< n (number-of-candidates xs))
-                  (natp n))
-             (consp (strip-cars (create-nth-choice-count-alist n xs)))))
-
-  (defthm consp-of-strip-cdrs-of-create-nth-choice-count-alist
-    (implies (and (< n (number-of-candidates xs))
-                  (natp n))
-             (consp (strip-cdrs (create-nth-choice-count-alist n xs))))))
+  (defret strip-cars-of-create-nth-choice-count-alist-equal-under-set-equiv
+    (acl2::set-equiv (strip-cars count-alst) cids)))
 
 (define majority ((n natp "Number of voters"))
   :returns (maj natp
@@ -266,7 +410,7 @@
 
   ///
 
-  (local (in-theory (e/d* () (acl2::functional-commutativity-of-minus-*-left))))
+  (local (in-theory (e/d () (acl2::functional-commutativity-of-minus-*-left))))
 
   (defthm majority-is-less-than-total
     (implies (posp n)
@@ -280,8 +424,8 @@
   (cond ((atom x) 0)
         ((atom (cdr x)) (lnfix (car x)))
         (t (max (lnfix (car x)) (max-nats (cdr x)))))
-  ///  
-  
+  ///
+
   (defthm max-nats-returns-a-member-of-input
     (implies (and (nat-listp x) (consp x))
              (member-equal (max-nats x) x)))
@@ -290,13 +434,15 @@
     (implies (natp e)
              (equal (max-nats (list e)) e))))
 
-(define first-choice-of-majority-p ((xs irv-ballot-p))
+(define first-choice-of-majority-p ((cids nat-listp "Sorted candidate IDs")
+                                    (xs irv-ballot-p))
   :short "Returns the candidate, if any, who is the first choice of
   more than half of the voters"
   :long "<p>This function encodes step (1) of the IRV algorithm: if a
-  candidate is the first choice of more than half of the voters, then
-  it wins --- this function returns the ID of that candidate.  If no
-  such candidate exists, this function returns @('nil').</p>"
+  candidate among @('cids') is the first choice of more than half of
+  the voters, then it wins --- this function returns the ID of that
+  candidate.  If no such candidate exists, this function returns
+  @('nil').</p>"
 
   :guard-hints (("Goal" :do-not-induct t))
 
@@ -320,27 +466,28 @@
      :hints (("Goal" :in-theory (e/d (max-nats) ())))
      :rule-classes (:rewrite :type-prescription)))
 
-  (if (endp xs)
+  (if (or (endp xs) (endp cids))
       nil
     (b* ((n (number-of-voters xs))
          (majority (majority n))
-         (count-alst (create-nth-choice-count-alist 0 xs))
+         (count-alst (create-nth-choice-count-alist 0 cids xs))
          (max-votes  (max-nats (strip-cdrs count-alst))))
       (if (< majority max-votes)
           (car (rassoc-equal max-votes count-alst))
         nil))))
 
-(define list-elements-equal (e
-                             (x true-listp))
+(define list-elements-equal (e (x true-listp))
   :short "Returns @('t') if all elements of @('x') are equal to @('e')"
   :returns (elem-equal? booleanp :rule-classes :type-prescription)
+
   (if (endp x)
       t
     (and (equal (car x) e)
          (list-elements-equal e (cdr x)))))
 
 (define pick-candidate-among-those-with-same-number-of-first-place-votes
-  ((xs irv-ballot-p))
+  ((cids nat-listp "Sorted Candidate IDs")
+   (xs irv-ballot-p))
   :short "If every remaining candidate has the same number of
     first-place votes, pick the candidate with the smallest ID"
   :long "<p>This function encodes step (2) of the IRV algorithm. This
@@ -356,15 +503,14 @@
 
   :prepwork
   ((local
-    (defthm natp-of-car-of-car-of-create-count-alist
-      (implies (and (nat-listp lst)
-                    (consp lst))
-               (natp (car (car (create-count-alist lst)))))
-      :hints (("Goal" :in-theory (e/d (create-count-alist) ()))))))
+    (defthm consp-of-car-of-count-alist
+      (implies (and (consp alst)
+                    (count-alistp alst))
+               (consp (car alst))))))
 
-  (if (endp xs)
+  (if (or (endp xs) (endp cids))
       nil
-    (b* ((count-alst (create-nth-choice-count-alist 0 xs))
+    (b* ((count-alst (create-nth-choice-count-alist 0 cids xs))
          (all-votes  (strip-cdrs count-alst))
          (all-votes-same? (list-elements-equal (car all-votes) all-votes)))
       (if all-votes-same?
@@ -461,7 +607,83 @@
              :cases ((not (member-equal val (strip-cdrs alst))))
              :in-theory (e/d (all-keys-returns-nil-when-value-not-found-in-alist
                               all-keys-returns-a-subset-of-keys-helper)
-                             ())))))
+                             ()))))
+
+  ;; (i-am-here)
+
+  ;; (defthm <-ordered-p-after-remove-equal
+  ;;   (implies (acl2::<-ordered-p lst)
+  ;;            (acl2::<-ordered-p (remove-equal val lst)))
+  ;;   :hints (("Goal"
+  ;;            :cases ((member-equal val lst))
+  ;;            :in-theory (e/d (acl2::<-ordered-p nat-listp) ()))))
+
+  ;; (local
+  ;;  (defthm remove-equal-and-strip-cars-of-delete-assoc-equal
+  ;;    (implies (no-duplicatesp-equal (strip-cars alst))
+  ;;             (equal (strip-cars (delete-assoc-equal key alst))
+  ;;                    (remove-equal key (strip-cars alst))))))
+
+  ;; (defthm <-ordered-p-after-delete-assoc-equal
+  ;;   (implies (and (acl2::<-ordered-p (strip-cars alst))
+  ;;                 (no-duplicatesp-equal (strip-cars alst)))
+  ;;            (acl2::<-ordered-p (strip-cars (delete-assoc-equal key alst))))
+  ;;   :hints (("Goal"
+  ;;            :do-not-induct t
+  ;;            :use ((:instance <-ordered-p-after-remove-equal
+  ;;                             (val key)
+  ;;                             (lst (strip-cars alst))))
+  ;;            :in-theory (e/d () (<-ordered-p-after-remove-equal)))))
+
+  ;; (defthm nat-listp-of-strip-cars-after-delete-assoc-equal
+  ;;   (implies (nat-listp (strip-cars alst))
+  ;;            (nat-listp (strip-cars (delete-assoc-equal key alst))))
+  ;;   :hints (("Goal"
+  ;;            :in-theory (e/d (nat-listp) ()))))
+
+
+  ;; (local
+  ;;  (defthm strip-cars-of-delete-assoc-equal-if-key-not-in-alist
+  ;;    (implies (not (member-equal key (strip-cars alst)))
+  ;;             (equal (strip-cars (delete-assoc-equal key alst))
+  ;;                    (strip-cars alst)))))
+
+  ;; (local
+  ;;  (defthm <-ordered-p-after-delete-assoc-equal-2
+  ;;    (implies (and (member-equal key (strip-cars alst))
+  ;;                  (acl2::<-ordered-p (strip-cars alst)))
+  ;;             (acl2::<-ordered-p (strip-cars (delete-assoc-equal key alst))))
+  ;;    :hints (("Goal" :in-theory (e/d (acl2::<-ordered-p) ())))))
+
+  ;; (defthm <-ordered-p-after-delete-assoc-equal
+  ;;   (implies (and (acl2::<-ordered-p (strip-cars alst))
+  ;;                 (nat-listp (strip-cars alst)))
+  ;;            (acl2::<-ordered-p (strip-cars (delete-assoc-equal key alst))))
+  ;;   :hints (("Goal"
+  ;;            :do-not-induct t
+  ;;            :cases ((member-equal key (strip-cars alst)))
+  ;;            :in-theory (e/d (acl2::<-ordered-p) ())))
+  ;;   :otf-flg t)
+
+  ;; (local
+  ;;  (defthmd first-element-of-ordered-list-is-smaller-than-any-other
+  ;;    (implies (and (acl2::<-ordered-p lst)
+  ;;                  (member-equal e (cdr lst)))
+  ;;             (<= (car lst) e))
+  ;;    :hints (("Goal" :in-theory (e/d (acl2::<-ordered-p nat-listp) ())))
+  ;;    :rule-classes :linear))
+
+  ;; (defthmd car-of-all-keys-is-car-of-rassoc-equal
+  ;;   (equal (car (all-keys val alst))
+  ;;          (car (rassoc-equal val alst))))
+
+  ;; (defthm all-keys-returns-an-alistp-sorted-by-keys
+  ;;   (implies (acl2::<-ordered-p (strip-cars alst))
+  ;;            (acl2::<-ordered-p (all-keys val alst)))
+  ;;   :hints (("Goal" :in-theory (e/d (acl2::<-ordered-p
+  ;;                                     car-of-all-keys-is-car-of-rassoc-equal)
+  ;;                                    ()))))
+  )
 
 (define candidates-with-min-votes ((count-alst count-alistp))
   :short "Returns a list of candidates, if any, which received the
@@ -495,52 +717,13 @@
 
   (defthm candidates-with-min-votes-returns-a-subset-of-candidates
     (subsetp-equal (candidates-with-min-votes count-alst)
-                   (strip-cars count-alst))))
+                   (strip-cars count-alst)))
 
-(define delete-all-pairs-but ((cids nat-listp)
-                              (count-alst count-alistp))
-  :short "Remove all pairs from @('count-alst') except those with keys
-  in @('cids')"
-
-  :returns (new-count-alst count-alistp :hyp (count-alistp count-alst))
-
-  (if (endp count-alst)
-      nil
-    (if (member-equal (caar count-alst) cids)
-        (cons (car count-alst) (delete-all-pairs-but cids (cdr count-alst)))
-      (delete-all-pairs-but cids (cdr count-alst))))
-
-  ///
-
-  (defthm delete-all-pairs-but-returns-a-subset-of-the-alist
-    (subsetp-equal (delete-all-pairs-but cids count-alst)
-                   count-alst))
-
-  (defthm delete-all-pairs-but-returns-a-subset-of-the-cids
-    (subsetp-equal (strip-cars (delete-all-pairs-but cids count-alst))
-                   cids))
-
-  (local
-   (defthm delete-all-pairs-but-returns-non-empty-alist-helper-1
-     (implies
-      (and (not (member-equal (car (car count-alst)) cids))
-           (consp cids))
-      (not (subsetp-equal cids (list (car (car count-alst))))))))
-
-  (local
-   (defthm delete-all-pairs-but-returns-non-empty-alist-helper-2
-     (implies
-      (and (not (member-equal (car (car count-alst)) cids))
-           (not (subsetp-equal cids (strip-cars (cdr count-alst)))))
-      (not (subsetp-equal cids
-                          (cons (car (car count-alst))
-                                (strip-cars (cdr count-alst))))))))
-
-  (defthm delete-all-pairs-but-returns-non-empty-alist
-    (implies (and (subsetp-equal cids (strip-cars count-alst))
-                  (consp cids))
-             (and (delete-all-pairs-but cids count-alst)
-                  (consp (delete-all-pairs-but cids count-alst))))))
+  ;; (defthm candidates-with-min-votes-returns-a-sorted-cids-list
+  ;;   ;; First prove all-keys-returns-an-alistp-sorted-by-keys.
+  ;;   (implies (acl2::<-ordered-p (strip-cars count-alst))
+  ;;            (acl2::<-ordered-p (candidates-with-min-votes count-alst))))
+  )
 
 (define candidate-with-least-nth-place-votes
   ((n    natp      "@('nth') preference under consideration")
@@ -562,6 +745,13 @@
   <p>For example:</p>
 
   <code>
+  (candidate-with-least-nth-place-votes 0 '(1 2 3 4)
+                                        '((1 2 3 4) (2 3 1 4) (3 2 1 4)))
+  </code>
+  <p>Result: candidate 4 <br/>
+     Reason: 4 has zero 0th-place votes.</p>
+
+  <code>
   (candidate-with-least-nth-place-votes 0 '(1 2 3) '((1 2 3) (1 3 2) (3 2 1) (3 2 1) (2 3 1)))
   </code>
   <p>Result: candidate 2 <br/>
@@ -570,7 +760,7 @@
   <code>
   (candidate-with-least-nth-place-votes 0 '(1 2 3) '((1 2 3) (1 3 2) (3 2 1) (2 3 1)))
   </code>
-  <p>Result: candidate 3 <br/>
+  <p>Result: candidate 2 <br/>
      Reason: 2 and 3 are tied for fewest number of 0th, 1st, and 2nd
      place votes. So we pick 2, because it is lesser than 3.</p>
 
@@ -605,12 +795,9 @@
         ;; be in ascending order, this will be the candidate with the smallest
         ;; ID.
         (car cids))
-       (count-alst (create-nth-choice-count-alist n xs))
-       (count-alst (delete-all-pairs-but cids count-alst))
+       (count-alst (create-nth-choice-count-alist n cids xs))
        ((when (endp count-alst))
-        ;; TODO: Is this the right thing to do?  Maybe this doesn't matter when
-        ;; a voter is required to rank all the candidates, but it'll matter
-        ;; when a partial ranking is allowed?
+        ;; TODO: When will this happen?
         ;; If all the candidates in this round are irrelevant, then return the
         ;; candidate with the smallest ID from the previous round.
         (car cids))
@@ -622,26 +809,19 @@
 
   ///
 
-  (defthm candidates-with-min-votes-of-delete-all-pairs-but-is-a-subset-of-cids
-    ;; TODO: Ugh, I wish this followed directly from the lemmas instantiated in
-    ;; the hints.
+  (defthm candidates-with-min-votes-is-a-subset-of-cids
     (subsetp-equal
      (candidates-with-min-votes
-      (delete-all-pairs-but cids (create-nth-choice-count-alist n xs)))
+      (create-nth-choice-count-alist n cids xs))
      cids)
     :hints
     (("Goal"
       :use
-      ((:instance delete-all-pairs-but-returns-a-subset-of-the-cids
-                  (cids cids)
-                  (count-alst (create-nth-choice-count-alist n xs)))
-       (:instance candidates-with-min-votes-returns-a-subset-of-candidates
-                  (count-alst (delete-all-pairs-but
-                               cids (create-nth-choice-count-alist n xs)))))
+      ((:instance candidates-with-min-votes-returns-a-subset-of-candidates
+                  (count-alst (create-nth-choice-count-alist n cids xs))))
       :in-theory
       (e/d ()
-           (candidates-with-min-votes-returns-a-subset-of-candidates
-            delete-all-pairs-but-returns-a-subset-of-the-cids)))))
+           (candidates-with-min-votes-returns-a-subset-of-candidates)))))
 
   (local
    (defthm subsetp-and-memberp-when-len-of-list==1
@@ -652,7 +832,16 @@
 
   (defthm candidate-with-least-nth-place-votes-is-in-cids
     (b* ((cid (candidate-with-least-nth-place-votes n cids xs)))
-      (implies cid (member-equal cid cids)))))
+      (implies cid (member-equal cid cids))))
+
+  (defthm candidate-with-least-nth-place-votes-returns-a-natp
+    (implies
+     (and (nat-listp cids)
+          (consp cids)
+          (irv-ballot-p xs))
+     (natp (candidate-with-least-nth-place-votes n cids xs)))
+    :hints (("Goal" :in-theory (e/d (number-of-candidates) ())))
+    :rule-classes (:rewrite :type-prescription)))
 
 (define eliminate-candidate ((id natp "Candidate ID")
                              (xs irv-ballot-p))
@@ -662,13 +851,13 @@
   (if (endp xs)
       nil
     (b* ((one (car xs))
-         (new-one (remove-equal id one))
-         ((when (endp new-one))
-          ;; All candidates eliminated!
-          nil)
          (rest (cdr xs))
+         (new-one (remove-equal id one))
          (new-rest (eliminate-candidate id rest)))
-      (cons new-one new-rest)))
+      (if (endp new-one)
+          ;; This voter's preferences exhausted!
+          new-rest
+        (cons new-one new-rest))))
 
   ///
 
@@ -676,68 +865,276 @@
     (implies (no-duplicatesp-equal x)
              (no-duplicatesp-equal (remove-equal id x))))
 
-  (defthm irv-ballot-p-core-of-eliminate-candidate
-    (implies (irv-ballot-p-core cids xs)
-             (b* ((new-cids (remove-equal id cids))
-                  (new-xs (eliminate-candidate id xs)))
-               (irv-ballot-p-core new-cids new-xs))))
+  (defthm nat-listp-after-remove-equal
+    (implies (nat-listp x)
+             (nat-listp (remove-equal val x)))
+    :hints (("Goal" :in-theory (e/d (nat-listp) ()))))
 
   (defthm irv-ballot-p-of-eliminate-candidate
     (implies (irv-ballot-p xs)
              (b* ((new-xs (eliminate-candidate id xs)))
                (irv-ballot-p new-xs))))
 
+  (defthm eliminate-candidate-returns-a-subset-of-candidates
+    (subsetp-equal (candidate-ids (eliminate-candidate id xs))
+                   (candidate-ids xs))
+    :hints (("Goal" :in-theory (e/d (candidate-ids) ()))))
+
+  (local
+   (defthm remove-equal-when-not-a-member
+     (implies (and (true-listp xs)
+                   (not (member-equal id xs)))
+              (equal (remove-equal id xs) xs))))
+
+  (defthm eliminate-candidate-removes-no-candidate-when-cid-not-in-candidates
+    (implies (and (irv-ballot-p xs)
+                  (not (member-equal id (candidate-ids xs))))
+             (equal (eliminate-candidate id xs) xs))
+    :hints (("Goal" :in-theory (e/d (candidate-ids) ()))))
+
+  (defthm eliminate-candidate-does-remove-a-candidate
+    (implies (and (irv-ballot-p xs) (natp id))
+             (equal (member-equal id (candidate-ids (eliminate-candidate id xs)))
+                    nil))
+    :hints (("Goal" :in-theory (e/d (candidate-ids) ()))))
+
+  (defthm eliminate-candidate-removes-only-the-requested-candidate
+    (implies (not (equal c1 c2))
+             (iff (member-equal c2 (candidate-ids (eliminate-candidate c1 xs)))
+                  (member-equal c2 (candidate-ids xs))))
+    :hints (("Goal" :in-theory (e/d (candidate-ids) ()))))
+
+  (local
+   (defthm member-equal-and-len-helper-1
+     (implies (and (equal (len flattened-original-xs) 0)
+                   (not (consp flattened-new-xs))
+                   (member-equal id flattened-original-xs)
+                   (true-listp flattened-original-xs))
+              (not (natp id)))))
+
+  (local
+   (defthm member-of-nat-listp-is-a-natp
+     (implies (and (member-equal id lst)
+                   (nat-listp lst))
+              (natp id))
+     :hints (("Goal" :in-theory (e/d (nat-listp) ())))))
+
+  (local
+   (defthm remove-equal-no-duplicatesp-equal-and-len-lemma
+     (implies (and (no-duplicatesp-equal old)
+                   (member-equal e old))
+              (equal (len (remove-equal e old))
+                     (+ -1 (len old))))
+     :hints (("Goal" :in-theory (e/d (remove-equal
+                                       no-duplicatesp-equal
+                                       len)
+                                      ())))))
+
+  (local
+   (defthm remove-duplicates-equal-remove-equal-and-len-lemma
+     (implies (and (not (member-equal id y)) (member-equal id x))
+              (equal (len (remove-duplicates-equal (append (remove-equal id x) y)))
+                     (+ -1 (len (remove-duplicates-equal (append x y))))))
+     :hints (("Goal" :in-theory (e/d (remove-equal
+                                       remove-duplicates-equal
+                                       len)
+                                      ())))))
+
+
+  (local
+   (defun proper-subset-ind-hint (sub super)
+     (if (endp sub)
+         super
+       (proper-subset-ind-hint
+        (cdr sub)
+        (remove-equal (car sub) super)))))
+
+  (local
+   (defthmd len-of-proper-subset-is-less-than-its-superset-when-no-duplicates
+     (implies (and (member-equal id flattened-old-xs)
+                   (not (member-equal id flattened-new-xs))
+                   (subsetp-equal flattened-new-xs flattened-old-xs)
+                   (true-listp flattened-old-xs)
+                   (no-duplicatesp-equal flattened-old-xs)
+                   (no-duplicatesp-equal flattened-new-xs)
+                   (natp id))
+              (< (len flattened-new-xs) (len flattened-old-xs)))
+     :hints (("Goal"
+              :induct (proper-subset-ind-hint
+                       flattened-new-xs
+                       flattened-old-xs)
+              :in-theory (e/d (len subsetp-equal)
+                               ((:induction member-equal)
+                                (:induction no-duplicatesp-equal)
+                                (:induction true-listp)
+                                (:induction subsetp-equal)))))))
+
+  (local
+   (defthm eliminate-candidate-reduces-the-number-of-candidates-helper-1
+     (and
+      (implies
+       (and
+        (<
+         (len
+          (remove-duplicates-equal (acl2::flatten (eliminate-candidate id xs))))
+         (len (remove-duplicates-equal (acl2::flatten xs))))
+        (nat-listp (car xs))
+        (consp (car xs))
+        (no-duplicatesp-equal (car xs))
+        (not (member-equal id
+                           (candidate-ids (eliminate-candidate id xs))))
+        (irv-ballot-p xs)
+        (member-equal id (candidate-ids xs)))
+       (< (number-of-candidates (eliminate-candidate id xs))
+          (number-of-candidates xs)))
+      (implies
+       (and (member-equal id
+                          (acl2::flatten (eliminate-candidate id xs)))
+            (nat-listp (car xs))
+            (consp (car xs))
+            (no-duplicatesp-equal (car xs))
+            (not (member-equal id
+                               (candidate-ids (eliminate-candidate id xs))))
+            (irv-ballot-p xs)
+            (member-equal id (candidate-ids xs)))
+       (< (number-of-candidates (eliminate-candidate id xs))
+          (number-of-candidates xs)))
+      (implies
+       (and (not (member-equal id (acl2::flatten xs)))
+            (nat-listp (car xs))
+            (consp (car xs))
+            (no-duplicatesp-equal (car xs))
+            (not (member-equal id
+                               (candidate-ids (eliminate-candidate id xs))))
+            (irv-ballot-p xs)
+            (member-equal id (candidate-ids xs)))
+       (< (number-of-candidates (eliminate-candidate id xs))
+          (number-of-candidates xs))))
+     :hints (("Goal" :do-not-induct t
+              :in-theory (e/d (number-of-candidates candidate-ids) ())))))
+
+  (local
+   (defthm eliminate-candidate-reduces-the-number-of-candidates-helper-2
+     (implies
+      (and (not (subsetp-equal (acl2::flatten (eliminate-candidate id xs))
+                               (acl2::flatten xs)))
+           (nat-listp (car xs))
+           (consp (car xs))
+           (no-duplicatesp-equal (car xs))
+           (not (member-equal id
+                              (candidate-ids (eliminate-candidate id xs))))
+           (irv-ballot-p xs)
+           (member-equal id (candidate-ids xs)))
+      (< (number-of-candidates (eliminate-candidate id xs))
+         (number-of-candidates xs)))
+     :hints (("Goal" :do-not-induct t
+              :use ((:instance eliminate-candidate-returns-a-subset-of-candidates))
+              :in-theory (e/d (number-of-candidates candidate-ids)
+                               (eliminate-candidate-returns-a-subset-of-candidates))))))
+
+  (defthm eliminate-candidate-reduces-the-number-of-candidates
+    (implies (and (irv-ballot-p xs)
+                  (member-equal id (candidate-ids xs)))
+             (< (number-of-candidates (eliminate-candidate id xs))
+                (number-of-candidates xs)))
+    :hints
+    (("Goal"
+      :do-not-induct t
+      :use ((:instance len-of-proper-subset-is-less-than-its-superset-when-no-duplicates
+                       (flattened-old-xs
+                        (remove-duplicates-equal (acl2::flatten xs)))
+                       (flattened-new-xs
+                        (remove-duplicates-equal
+                         (acl2::flatten (eliminate-candidate id xs)))))
+            (:instance eliminate-candidate-does-remove-a-candidate))
+      :in-theory (e/d ()
+                      (eliminate-candidate-does-remove-a-candidate))))
+    :rule-classes :linear)
+
+  (defthm if-eliminate-candidate-reduced-the-number-of-candidates-then-id-was-a-candidate
+    (implies (and (irv-ballot-p xs)
+                  (< (number-of-candidates (eliminate-candidate id xs))
+                     (number-of-candidates xs)))
+             (member-equal id (candidate-ids xs)))
+    :hints
+    (("Goal"
+      :do-not-induct t
+      :use ((:instance len-of-proper-subset-is-less-than-its-superset-when-no-duplicates
+                       (flattened-old-xs
+                        (remove-duplicates-equal (acl2::flatten xs)))
+                       (flattened-new-xs
+                        (remove-duplicates-equal
+                         (acl2::flatten (eliminate-candidate id xs)))))
+            (:instance eliminate-candidate-does-remove-a-candidate))
+      :in-theory (e/d ()
+                      (eliminate-candidate-does-remove-a-candidate)))))
+
+  (defthm remove-equal-and-append
+    (equal (remove-equal id (append x y))
+           (append (remove-equal id x)
+                   (remove-equal id y))))
+
+  (local
+   (defthm candidate-ids-of-eliminate-candidate-is-remove-equal-of-candidate-ids-helper
+     (equal (acl2::flatten (eliminate-candidate id xs))
+            (remove-equal id (acl2::flatten xs)))
+     :hints (("Goal" :in-theory (e/d (acl2::flatten)
+                                      ())))))
+
+  (defthm remove-equal-of-<-insert-same-element
+    (equal (remove-equal e (acl2::<-insert e lst))
+           (remove-equal e lst))
+    :hints (("Goal" :in-theory (e/d (acl2::<-insert)
+                                     ()))))
+
+  (defthm remove-equal-of-<-insert-different-element
+    (implies (and (not (equal e1 e2))
+                  (acl2::<-ordered-p lst))
+             (equal (remove-equal e1 (acl2::<-insert e2 lst))
+                    (acl2::<-insert e2 (remove-equal e1 lst))))
+    :hints (("Goal" :in-theory (e/d (acl2::<-insert
+                                      acl2::<-ordered-p)
+                                     ()))))
+
+  (defthm remove-equal-and-<-insertsort-commute
+    (equal
+     (acl2::<-insertsort (remove-equal id x))
+     (remove-equal id (acl2::<-insertsort x)))
+    :hints (("Goal" :in-theory (e/d (acl2::<-insertsort
+                                      acl2::<-insert
+                                      acl2::<-ordered-p)
+                                     ()))))
+
+  (defthm candidate-ids-of-eliminate-candidate-is-remove-equal-of-candidate-ids
+    (equal (candidate-ids (eliminate-candidate id xs))
+           (remove-equal id (candidate-ids xs)))
+    :hints (("Goal"
+             :do-not-induct t
+             :in-theory (e/d (candidate-ids)
+                              ()))))
+
+  (defthm eliminate-candidate-reduces-the-number-of-candidates-by-one
+    (implies (and (irv-ballot-p xs)
+                  (member-equal id (candidate-ids xs)))
+             (equal (number-of-candidates (eliminate-candidate id xs))
+                    (+ -1 (number-of-candidates xs))))
+    :hints
+    (("Goal"
+      :do-not-induct t
+      :in-theory (e/d (number-of-candidates)
+                       ()))))
+
   (defthm consp-of-eliminate-candidate
     (implies (and (irv-ballot-p xs)
                   (< 1 (number-of-candidates xs)))
              (consp (eliminate-candidate id xs)))
-    :hints (("Goal" :in-theory (e/d (number-of-candidates) ()))))
-
-  ;; We need both remove-equal-does-not-increase-len-of-list and
-  ;; remove-equal-decreases-len-of-list here.
-  (defthm remove-equal-does-not-increase-len-of-list
-    (<= (len (remove-equal id lst))
-        (len lst))
-    :rule-classes :linear)
-
-  (defthm remove-equal-decreases-len-of-list
-    (implies (member-equal id lst)
-             (< (len (remove-equal id lst))
-                (len lst)))
-    :rule-classes :linear)
-
-  (defthm len-of-flatten-list-is-more-than-len-of-a-sublist
-    (<= (len (car xs))
-        (len (acl2::flatten xs)))
-    :hints (("Goal" :in-theory (e/d (acl2::flatten) ()))))
-
-  (local
-   (defthm a-candidate-is-present-in-every-voter-record-in-irv-ballot-p-core
-     (implies (and (not (member-equal id (acl2::flatten (cdr xs))))
-                   (member-equal id (acl2::flatten xs))
-                   (irv-ballot-p-core (car xs) (cdr xs)))
-              (equal (cdr xs) nil))
-     :hints (("Goal" :in-theory (e/d (acl2::flatten) ())))))
-
-  (local
-   (defthm ill-formed-irv-ballot-p-core
-     (implies (and (not (member-equal id (acl2::flatten xs)))
-                   (consp xs)
-                   (member-equal id cids))
-              (not (irv-ballot-p-core cids xs)))))
-
-  (local
-   (defthm flatten-list-with-one-element
-     (implies (equal (cdr xs) nil)
-              (equal (len (acl2::flatten xs))
-                     (len (car xs))))))
-
-  (defthm eliminate-candidate-reduces-the-len-of-flatten-of-xs
-    (implies (and (member-equal id (acl2::flatten xs))
-                  (irv-ballot-p xs))
-             (< (len (acl2::flatten (eliminate-candidate id xs)))
-                (len (acl2::flatten xs))))
-    :rule-classes :linear))
+    :hints
+    (("Goal"
+      :use ((:instance eliminate-candidate-reduces-the-number-of-candidates-by-one))
+      :in-theory
+      (e/d ()
+           (eliminate-candidate-reduces-the-number-of-candidates-by-one))))
+    :rule-classes (:rewrite :type-prescription)))
 
 (define irv ((xs irv-ballot-p))
 
@@ -748,8 +1145,9 @@
   ;; (irv '((1 2 3) (3 1 2) (3 2 1) (3 2 1))) ;; 3 wins (majority)
   ;; (irv '((1 2 3) (3 1 2) (3 2 1) (2 3 1))) ;; 2 wins
   ;; (irv '((1 2 3) (1 3 2) (3 2 1) (2 3 1))) ;; 1 wins (tie-breaks in all rounds)
+  ;; (irv '((1 2 3 4) (1 3 2 4) (3 2 1 4) (2 3 1 4)))
 
-  :measure (len (acl2::flatten xs))
+  :measure (number-of-candidates xs)
 
   :guard-hints (("Goal"
                  :do-not-induct t
@@ -757,40 +1155,32 @@
 
   :prepwork
 
-  ((local
-    (defthm member-equal-of-<-insertsort
-      (iff (member-equal e (acl2::<-insertsort x))
-           (member-equal e x))
-      :hints (("Goal" :in-theory (e/d (member-equal
-                                       acl2::<-insertsort
-                                       acl2::<-insert)
-                                      ())))))
+  ((defthm nat-listp-of-flatten-of-irv-ballot
+     (implies (irv-ballot-p xs)
+              (nat-listp (acl2::flatten xs)))
+     :hints (("Goal" :in-theory (e/d (nat-listp) ()))))
 
    (defthm irv-termination-helper-lemma
      (implies
       (and
        (irv-ballot-p xs)
        (consp xs)
-       (not (natp (first-choice-of-majority-p xs)))
-       (not
-        (natp
-         (pick-candidate-among-those-with-same-number-of-first-place-votes xs)))
-       (natp (candidate-with-least-nth-place-votes
-              0 (acl2::<-insertsort (car xs))
-              xs)))
-      (<
-       (len
-        (acl2::flatten
-         (eliminate-candidate
-          (candidate-with-least-nth-place-votes 0 (acl2::<-insertsort (car xs))
-                                                xs)
-          xs)))
-       (len (acl2::flatten xs))))
+       (not (natp (first-choice-of-majority-p (candidate-ids xs)
+                                              xs)))
+       (not (natp (pick-candidate-among-those-with-same-number-of-first-place-votes
+                   (candidate-ids xs)
+                   xs))))
+      (< (number-of-candidates
+          (eliminate-candidate
+           (candidate-with-least-nth-place-votes 0 (candidate-ids xs)
+                                                 xs)
+           xs))
+         (number-of-candidates xs)))
      :hints (("Goal"
               :use
               ((:instance candidate-with-least-nth-place-votes-is-in-cids
                           (n 0)
-                          (cids (acl2::<-insertsort (car xs)))
+                          (cids (candidate-ids xs))
                           (xs xs)))
               :in-theory
               (e/d ()
@@ -811,287 +1201,408 @@
                :in-theory (e/d (acl2::maybe-natp)
                                (maybe-natp-of-candidate-with-least-nth-place-votes))))))
 
+   (encapsulate
+     ()
 
-   (local
-    (defthm irv-ballot-p-opener-1
-      (implies (irv-ballot-p xs)
-               (and (true-listp (car xs))
-                    (nat-listp (car xs))))))
+     (defthm len-of-consp-not-zero
+       (implies (consp x)
+                (not (equal (len x) 0))))
 
-   (local
-    (defthm irv-ballot-p-opener-2
-      (implies (and (irv-ballot-p xs) (not (consp xs)))
-               (not xs))
-      :rule-classes :forward-chaining)))
+     (local
+      (defthm len-of-0th-choice-list-is-equal-to-the-number-of-voters
+        (implies (irv-ballot-p xs)
+                 (equal (len (make-nth-choice-list 0 xs))
+                        (number-of-voters xs)))
+        :hints (("Goal" :in-theory
+                 (e/d (make-nth-choice-list
+                        number-of-candidates
+                        number-of-voters)
+                       ())))))
 
-  (if (mbt (irv-ballot-p xs))
-      (if (endp xs)
-          nil
-        (b* ((step-1-candidate (first-choice-of-majority-p xs))
-             ((when (natp step-1-candidate))
-              step-1-candidate)
-             (step-2-candidate
-              (pick-candidate-among-those-with-same-number-of-first-place-votes
-               xs))
-             ((when (natp step-2-candidate))
-              step-2-candidate)
-             (step-n-candidate-to-remove
-              (candidate-with-least-nth-place-votes
-               0                       ;; First preference
-               (acl2::<-sort (car xs)) ;; List of relevant candidates
-               xs))
-             ((unless (or (natp step-n-candidate-to-remove)
-                          (member-equal step-n-candidate-to-remove (car xs))))
-              ;; Error! This shouldn't happen.
-              nil)
-             (new-xs (eliminate-candidate step-n-candidate-to-remove xs)))
-          (irv new-xs)))
-    nil)
+     (local
+      (defthm duplicity-upper-bound
+        (<= (acl2::duplicity e lst) (len lst))
+        :rule-classes :linear))
 
-  ///
+     (local
+      (defthm duplicity-for-list-elements-equal
+        (iff (list-elements-equal e lst)
+             (equal (acl2::duplicity e lst)
+                    (len lst)))
+        :hints (("Goal" :in-theory (e/d (list-elements-equal
+                                          acl2::duplicity
+                                          len)
+                                         ())))))
 
-  (local
-   (defthm car-of-subset-of-nat-listp-is-a-natp
-     (implies (and (subsetp-equal cids lst)
-                   (nat-listp lst)
-                   (consp cids))
-              (natp (car cids)))
-     :hints (("Goal" :in-theory (e/d (subsetp-equal) ())))))
+     (local
+      (defthm create-count-alist-of-list-elements-equal
+        (implies (and (list-elements-equal e lst)
+                      (member-equal e cids))
+                 (equal
+                  (cdr (assoc-equal e (create-count-alist cids lst)))
+                  ;; (acl2::duplicity e lst) --- true, irrespective of
+                  ;; list-elements-equal.
+                  (len lst)))
+        :hints (("Goal" :in-theory
+                 (e/d (list-elements-equal
+                        create-count-alist)
+                       ())))))
 
-  (defthm make-nth-choice-list-returns-subset-of-all-cids
-    (implies (irv-ballot-p xs)
-             (subsetp-equal (make-nth-choice-list n xs)
-                            (car xs)))
-    :hints (("Goal" :in-theory (e/d (make-nth-choice-list
-                                     number-of-candidates)
-                                    ()))))
+     (local
+      (defthmd max-number-of-votes-in-a-count-alist-means-same-choice-list
+        (implies
+         (and
+          (equal (cdr (assoc-equal e (create-count-alist cids lst)))
+                 (len lst))
+          (member-equal e cids))
+         (list-elements-equal e lst))
+        :hints (("Goal"
+                 :in-theory (e/d (create-count-alist
+                                   list-elements-equal
+                                   len)
+                                  ((:induction max-nats)
+                                   (:induction member-equal)
+                                   (:induction true-listp)))))))
 
-  (local
-   (defthm strip-cars-of-create-count-alist-returns-subset-of-input-helper
-     (iff (subsetp-equal (remove-equal e x) y)
-          (subsetp-equal (cons e x) (cons e y)))
-     :hints (("Goal" :in-theory (e/d (subsetp-equal) ())))))
+     (local
+      (defthm uniqueness-of-duplicity-element-lemma
+        (implies (and
+                  (equal (acl2::duplicity e1 lst)
+                         (len lst))
+                  (consp lst))
+                 (iff (equal (acl2::duplicity e2 lst)
+                             (len lst))
+                      (equal e1 e2)))
+        :hints (("Goal" :in-theory (e/d (acl2::duplicity
+                                          len)
+                                         ())))))
 
-  (defthm strip-cars-of-create-count-alist-returns-subset-of-input
-    (and (subsetp-equal (strip-cars (create-count-alist lst)) lst)
-         (subsetp-equal lst (strip-cars (create-count-alist lst))))
-    :hints (("Goal" :in-theory (e/d (create-count-alist) ()))))
-
-  (defthm subsetp-equal-of-<-insertsort
-    (iff (subsetp-equal y (acl2::<-insertsort x))
-         (subsetp-equal y x))
-    :hints
-    (("Goal" :in-theory
-      (e/d (subsetp-equal acl2::<-insertsort acl2::<-insert)
-           ()))))
-
-  (defthm create-nth-choice-count-alist-returns-cids
-    (implies (irv-ballot-p xs)
-             (subsetp-equal
-              (strip-cars (create-nth-choice-count-alist n xs))
-              (car xs)))
-    :hints (("Goal"
-             :use ((:instance strip-cars-of-create-count-alist-returns-subset-of-input
-                              (lst (acl2::<-insertsort (make-nth-choice-list n xs))))
-                   (:instance make-nth-choice-list-returns-subset-of-all-cids
-                              (n n) (xs xs)))
-             :in-theory (e/d (create-nth-choice-count-alist)
-                             (strip-cars-of-create-count-alist-returns-subset-of-input
-                              make-nth-choice-list-returns-subset-of-all-cids)))))
-
-  (defthmd delete-all-pairs-but-returns-non-empty-alist-stricter
-    ;; delete-all-pairs-but is non-empty if there exists at least one
-    ;; element e that is in cids and that is a key of count-alst.
-    (implies (and (member-equal e cids)
-                  (member-equal e (strip-cars count-alst)))
-             (consp (delete-all-pairs-but cids count-alst)))
-    :hints (("Goal" :in-theory (e/d (delete-all-pairs-but) ()))))
+     (local
+      (defthm zero-len-cids-and-create-count-alist
+        (implies (equal (len cids) 0)
+                 (equal (create-count-alist cids lst) nil))
+        :hints (("Goal" :in-theory (e/d (create-count-alist
+                                          len)
+                                         ())))))
 
 
-  (defthm member-of-strip-cars-create-count-alist-is-a-member-of-input-list
-    (implies (member-equal e lst)
-             (member-equal e (strip-cars (create-count-alist lst))))
-    :hints (("Goal" :in-theory (e/d (create-count-alist) ()))))
+     (local
+      (defthmd same-choice-list-means-max-nats-is-len-of-list
+        (implies
+         (and (list-elements-equal e lst)
+              (member-equal e cids)
+              (equal (len cids) 1))
+         (equal (max-nats (strip-cdrs (create-count-alist cids lst)))
+                (len lst)))
+        :hints (("Goal"
+                 :in-theory (e/d (create-count-alist
+                                   list-elements-equal
+                                   len
+                                   max-nats)
+                                  ())))))
 
-  (defthm nth-preference-of-the-first-voter-is-in-create-nth-choice-count-alist
-    (implies (and (consp xs)
-                  (< n (number-of-candidates xs)))
-             (member-equal (nth n (car xs))
-                           (strip-cars (create-nth-choice-count-alist n xs))))
-    :hints (("Goal" :in-theory (e/d (create-nth-choice-count-alist
-                                     create-count-alist
-                                     make-nth-choice-list)
-                                    ()))))
+     (local
+      (defthm exactly-one-candidate-gets-all-the-votes-helper
+        (implies
+         (and
+          (equal (cdr (assoc-equal e (create-count-alist cids lst)))
+                 (len lst))
+          (member-equal e cids)
+          (equal (len cids) 1))
+         (equal (max-nats (strip-cdrs (create-count-alist cids lst)))
+                (len lst)))
+        :hints (("Goal"
+                 :use
+                 ((:instance max-number-of-votes-in-a-count-alist-means-same-choice-list)
+                  (:instance same-choice-list-means-max-nats-is-len-of-list))))))
 
-  (defthm candidate-with-least-nth-place-votes-returns-a-natp
-    (implies
-     (and (nat-listp cids)
-          (consp cids)
-          (irv-ballot-p xs))
-     (natp (candidate-with-least-nth-place-votes n cids xs)))
-    :hints (("Goal"
-             :in-theory (e/d (candidate-with-least-nth-place-votes
-                              number-of-candidates)
-                             ())))
-    :rule-classes (:rewrite :type-prescription))
+     (local
+      (defthm exactly-one-candidate-gets-all-the-votes-helper-1
+        (implies
+         (and
+          (equal
+           (cdr
+            (assoc-equal
+             (car (car xs))
+             (create-count-alist
+              (acl2::<-insertsort (remove-duplicates-equal (acl2::flatten xs)))
+              (make-nth-choice-list 0 xs))))
+           (number-of-voters xs))
+          (irv-ballot-p xs)
+          (equal (number-of-candidates xs) 1))
+         (equal
+          (max-nats
+           (strip-cdrs
+            (create-count-alist
+             (acl2::<-insertsort (remove-duplicates-equal (acl2::flatten xs)))
+             (make-nth-choice-list 0 xs))))
+          (number-of-voters xs)))
+        :hints (("Goal"
+                 :in-theory
+                 (e/d
+                  (create-nth-choice-count-alist
+                   candidate-ids
+                   number-of-voters
+                   number-of-candidates)
+                  (create-count-alist-of-list-elements-equal))
+                 :use
+                 ((:instance max-number-of-votes-in-a-count-alist-means-same-choice-list
+                             (e (car (car xs)))
+                             (cids (candidate-ids xs))
+                             (lst (make-nth-choice-list 0 xs)))
+                  (:instance same-choice-list-means-max-nats-is-len-of-list
+                             (e (car (car xs)))
+                             (cids (candidate-ids xs))
+                             (lst (make-nth-choice-list 0 xs))))))))
 
-  (encapsulate
-    ()
+     (local
+      (defthm zero-len-of-remove-duplicates-equal-lemma
+        (implies (equal (len (remove-duplicates-equal x)) 0)
+                 (not (consp x)))
+        :hints (("Goal" :in-theory (e/d (len remove-duplicates-equal)
+                                         ())))))
 
-    (defthm len-of-consp-not-zero
-      (implies (consp x)
-               (not (equal (len x) 0))))
+     (defthmd list-elements-equal-under-remove-duplicates-equal
+       (iff (list-elements-equal e x)
+            (list-elements-equal e (remove-duplicates-equal x)))
+       :hints (("Goal" :in-theory (e/d (list-elements-equal) ()))))
 
-    (local
-     (defthm number-of-candidates-is-exactly-one-lemma
+     (local
+      (defthmd list-elements-equal-of-list-of-length=1
+        (implies
+         (and
+          (equal (len x) 1)
+          (member-equal e x))
+         (list-elements-equal e x))
+        :hints (("Goal" :in-theory (e/d (list-elements-equal
+                                          len)
+                                         (duplicity-for-list-elements-equal))))))
+
+     (local
+      (defthmd list-elements-equal-of-list-of-unique-elements-length=1
+        (implies
+         (and
+          (equal (len (remove-duplicates-equal x)) 1)
+          (member-equal e x))
+         (list-elements-equal e x))
+        :hints (("Goal"
+                 :do-not-induct t
+                 :use ((:instance list-elements-equal-of-list-of-length=1
+                                  (x (remove-duplicates-equal x)))
+                       (:instance list-elements-equal-under-remove-duplicates-equal))
+                 :in-theory (e/d ()
+                                  (list-elements-equal
+                                   len
+                                   duplicity-for-list-elements-equal))))))
+
+     (local
+      (defthmd each-voter-has-exactly-one-preference
+        (implies (and (irv-ballot-p xs)
+                      (equal (len (remove-duplicates-equal (acl2::flatten xs))) 1))
+                 (equal (car xs)
+                        (list (car (car xs)))))
+        :hints (("Goal" :in-theory (e/d (acl2::flatten
+                                          make-nth-choice-list)
+                                         ())))))
+
+     (defthmd make-nth-choice-list-and-flatten-for-1-candidate-helper-1
+       (implies (and (nat-listp (car xs))
+                     (no-duplicatesp-equal (car xs))
+                     (equal (make-nth-choice-list 0 (cdr xs))
+                            (acl2::flatten (cdr xs)))
+                     (irv-ballot-p (cdr xs))
+                     (equal (len (remove-duplicates-equal (acl2::flatten xs)))
+                            1))
+                (equal (make-nth-choice-list 0 xs)
+                       (acl2::flatten xs)))
+       :hints (("Goal"
+                :use ((:instance each-voter-has-exactly-one-preference))
+                :do-not-induct t
+                :expand ((make-nth-choice-list 0 xs)
+                         (acl2::flatten xs)))))
+
+     (local
+      (defthmd one-voter-has-exactly-one-preference
+        (implies
+         (and (equal (len (remove-duplicates-equal (append x y))) 1)
+              (not (equal (len (remove-duplicates-equal y)) 1)))
+         (not (consp y)))
+        :hints (("Goal" :in-theory (e/d (len) ())))))
+
+     (local
+      (defthmd make-nth-choice-list-and-flatten-for-1-candidate-helper-2
+        (implies
+         (and (irv-ballot-p xs)
+              (equal (len (remove-duplicates-equal (acl2::flatten xs)))
+                     1)
+              (not (equal
+                    (len (remove-duplicates-equal (acl2::flatten (cdr xs))))
+                    1)))
+         (equal (cdr xs) nil))
+        :hints (("Goal"
+                 :in-theory (e/d (acl2::flatten) ()))
+                (if (and (consp (car id))
+                         (< 1 (len (car id))))
+                    '(:use ((:instance one-voter-has-exactly-one-preference
+                                       (x (car xs))
+                                       (y (acl2::flatten (cdr xs))))))
+                  nil))))
+
+     (local
+      (defthmd make-nth-choice-list-and-flatten-for-1-candidate
+        (implies (and (irv-ballot-p xs)
+                      (equal (len (remove-duplicates-equal (acl2::flatten xs))) 1))
+                 (equal (make-nth-choice-list 0 xs)
+                        (acl2::flatten xs)))
+        :hints (("Goal"
+                 :in-theory (e/d (make-nth-choice-list-and-flatten-for-1-candidate-helper-1
+                                   make-nth-choice-list-and-flatten-for-1-candidate-helper-2)
+                                  ())))))
+
+     (local
+      (defthmd list-elements-equal-of-0th-choice-list-for-exactly-1-candidate-helper
+        (implies
+         (and (irv-ballot-p xs)
+              (member-equal e (acl2::flatten xs))
+              (equal (len (remove-duplicates-equal (acl2::flatten xs))) 1))
+         (list-elements-equal e (make-nth-choice-list 0 xs)))
+        :hints (("Goal"
+                 :use ((:instance list-elements-equal-of-list-of-unique-elements-length=1
+                                  (x (acl2::flatten xs))))
+                 :in-theory (e/d (make-nth-choice-list-and-flatten-for-1-candidate)
+                                  (list-elements-equal
+                                   len
+                                   acl2::flatten
+                                   duplicity-for-list-elements-equal))))))
+
+     (local
+      (defthmd list-elements-equal-of-0th-choice-list-for-exactly-1-candidate
+        (implies
+         (and (irv-ballot-p xs)
+              (equal (number-of-candidates xs) 1))
+         (list-elements-equal (car (car xs)) (make-nth-choice-list 0 xs)))
+        :hints
+        (("Goal"
+          :in-theory (e/d (number-of-candidates
+                            candidate-ids)
+                           ())
+          :use
+          ((:instance list-elements-equal-of-0th-choice-list-for-exactly-1-candidate-helper
+                      (e (car (car xs)))))))))
+
+     (defthm exactly-one-candidate-gets-all-the-votes
+       (implies
+        (and (irv-ballot-p xs)
+             (equal (number-of-candidates xs) 1))
+        (equal (max-nats (strip-cdrs
+                          (create-nth-choice-count-alist 0 (candidate-ids xs) xs)))
+               (number-of-voters xs)))
+       :hints
+       (("Goal"
+         :do-not '(preprocess)
+         :do-not-induct t
+         :use
+         ((:instance
+           create-count-alist-of-list-elements-equal
+           (e (caar xs))
+           (cids (candidate-ids xs))
+           (lst (make-nth-choice-list 0 xs))))
+         :in-theory
+         (e/d
+          (create-nth-choice-count-alist
+           candidate-ids
+           list-elements-equal-of-0th-choice-list-for-exactly-1-candidate)
+          (create-count-alist-of-list-elements-equal
+           duplicity-for-list-elements-equal)))))
+
+     (defthm exactly-one-candidate-gets-the-majority-votes
        (implies
         (and (irv-ballot-p xs)
              (consp xs)
              (<= (number-of-candidates xs) 1))
-        (equal (number-of-candidates xs) 1))
-       :hints (("Goal"
-                :in-theory (e/d* (number-of-candidates)
-                                 ())))))
+        (< (majority (number-of-voters xs))
+           (max-nats (strip-cdrs
+                      (create-nth-choice-count-alist
+                       0 (candidate-ids xs) xs)))))
+       :hints
+       (("Goal"
+         :use ((:instance exactly-one-candidate-gets-all-the-votes)
+               (:instance majority-is-less-than-total
+                          (n (number-of-voters xs))))
+         :in-theory
+         (e/d (posp
+                number-of-voters
+                number-of-candidates)
+               (exactly-one-candidate-gets-all-the-votes
+                majority-is-less-than-total))))))
 
-    (local
-     (defthm len-of-0th-choice-list-is-equal-to-the-number-of-voters
-       (implies (irv-ballot-p xs)
-                (equal (len (make-nth-choice-list 0 xs))
-                       (number-of-voters xs)))
-       :hints (("Goal" :in-theory
-                (e/d* (make-nth-choice-list
-                       number-of-candidates
-                       number-of-voters)
-                      ())))))
+   (local
+    (defthm natp-of-rassoc-equal-max-nats-of-strip-cdrs-count-alistp
+      (implies (and (count-alistp alst) (consp alst))
+               (natp (car (rassoc-equal (max-nats (strip-cdrs alst)) alst))))
+      :hints (("Goal" :in-theory (e/d (max-nats
+                                        nat-listp)
+                                       ())))))
 
-    (local
-     (defthm list-elements-equal-of-0th-choice-list-for-exactly-1-candidate
-       (implies (and (irv-ballot-p xs)
-                     (equal (number-of-candidates xs) 1))
-                (list-elements-equal
-                 (car (make-nth-choice-list 0 xs))
-                 (make-nth-choice-list 0 xs)))
-       :hints (("Goal" :in-theory
-                (e/d* (list-elements-equal
-                       make-nth-choice-list
-                       acl2::flatten
-                       number-of-candidates
-                       number-of-voters)
-                      ())))))
+   (defthm first-choice-of-majority-p-empty-implies-more-than-one-candidate
+     (b* ((cids (candidate-ids xs))
+          (winner-by-majority (first-choice-of-majority-p cids xs)))
+       (implies (and
+                 ;; The following two hypotheses about xs just imply
+                 ;; that the election has 1 or more contesting
+                 ;; candidates.  We want to prove that the election has
+                 ;; strictly more than 1 candidate contesting when no
+                 ;; one wins by a majority.
+                 (irv-ballot-p xs)
+                 (consp xs)
+                 (not (natp winner-by-majority)))
+                (< 1 (number-of-candidates xs))))
+     :hints (("Goal"
+              :do-not-induct t
+              :in-theory (e/d (first-choice-of-majority-p)
+                              ())))
+     :rule-classes :linear))
 
-    (local
-     (defthmd create-count-alist-of-list-elements-equal-helper
-       (implies (list-elements-equal e (cons e lst))
-                (equal (strip-cdrs (create-count-alist (cons e lst)))
-                       (list (len (cons e lst)))))
-       :hints (("Goal" :in-theory (e/d* (create-count-alist
-                                         list-elements-equal)
-                                        ())))))
+  (if (mbt (irv-ballot-p xs))
 
-    (local
-     (defthm create-count-alist-of-list-elements-equal
-       (implies (and (list-elements-equal (car lst) lst)
-                     (consp lst))
-                (equal (strip-cdrs (create-count-alist lst))
-                       (list (len lst))))
-       :hints (("Goal" :in-theory
-                (e/d* (create-count-alist-of-list-elements-equal-helper)
-                      ())))))    
+      (if (endp xs)
+          nil
+        (b* ((cids (candidate-ids xs)) ;; sorted CIDs.
+             (step-1-candidate (first-choice-of-majority-p cids xs))
+             ((when (natp step-1-candidate))
+              step-1-candidate)
+             (step-2-candidate
+              (pick-candidate-among-those-with-same-number-of-first-place-votes
+               cids xs))
+             ((when (natp step-2-candidate))
+              step-2-candidate)
+             (step-n-candidate-to-remove
+              (candidate-with-least-nth-place-votes
+               0    ;; First preference
+               cids ;; List of relevant candidates
+               xs))
+             ;; ((unless (or (natp step-n-candidate-to-remove)
+             ;;              (member-equal step-n-candidate-to-remove
+             ;;                            (acl2::flatten xs))))
+             ;;  ;; We have proved that nil can't be returned here.
+             ;;  nil)
+             (new-xs (eliminate-candidate step-n-candidate-to-remove xs)))
+          (irv new-xs)))
 
+    nil)
 
-    (defthm list-elements-equal-and-<-insertsort
-      ;; iff instead of implies?
-      (implies (list-elements-equal e lst)
-               (list-elements-equal e (acl2::<-insertsort lst)))
-      :hints (("Goal" :in-theory (e/d* (list-elements-equal
-                                        acl2::<-insertsort
-                                        acl2::<-insert)
-                                       ()))))
-
-    (local
-     (defthm one-element-of-list-elements-equal-and-<-insertsort
-       (implies (and (list-elements-equal e lst) (consp lst))
-                (equal (car (acl2::<-insertsort lst)) e))
-       :hints (("Goal"
-                :do-not '(preprocess)
-                :in-theory (e/d* (list-elements-equal
-                                  acl2::<-insertsort
-                                  acl2::<-insert)
-                                 (list-elements-equal-and-<-insertsort))))))
-
-    (defthm exactly-one-candidate-gets-all-the-votes
-      (implies
-       (and (irv-ballot-p xs)
-            (consp xs)
-            (equal (number-of-candidates xs) 1))
-       (equal (max-nats (strip-cdrs (create-nth-choice-count-alist 0 xs)))
-              (number-of-voters xs)))
-      :hints
-      (("Goal"
-        :do-not '(preprocess)
-        :do-not-induct t
-        :use
-        ((:instance
-          create-count-alist-of-list-elements-equal
-          (lst (acl2::<-insertsort (make-nth-choice-list 0 xs))))
-         (:instance list-elements-equal-of-0th-choice-list-for-exactly-1-candidate))
-        :in-theory
-        (e/d*
-         (create-nth-choice-count-alist)
-         (create-count-alist-of-list-elements-equal          
-          list-elements-equal-of-0th-choice-list-for-exactly-1-candidate)))))
-
-    (defthm exactly-one-candidate-gets-the-majority-votes
-      (implies
-       (and (nat-listp (car xs))
-            (consp (car xs))
-            (no-duplicatesp-equal (car xs))
-            (irv-ballot-p-core (car xs) (cdr xs))
-            (consp xs)
-            (<= (number-of-candidates xs) 1))
-       (< (majority (number-of-voters xs))
-          (max-nats (strip-cdrs (create-nth-choice-count-alist 0 xs)))))
-      :hints
-      (("Goal"
-        :use ((:instance exactly-one-candidate-gets-all-the-votes)
-              (:instance majority-is-less-than-total
-                         (n (number-of-voters xs))))
-        :in-theory
-        (e/d* (posp
-               number-of-voters
-               number-of-candidates)
-              (exactly-one-candidate-gets-all-the-votes
-               majority-is-less-than-total))))))  
-
-  (defthm first-choice-of-majority-p-empty-implies-more-than-one-candidate
-    (b* ((winner-by-majority (first-choice-of-majority-p xs)))
-      (implies (and
-                ;; The following two hypotheses about xs just imply that the
-                ;; election has 1 or more contesting candidates.  We want to
-                ;; prove that the election has strictly more than 1 candidate
-                ;; contesting when no one wins by a majority.
-                (irv-ballot-p xs)
-                (consp xs)
-                (not (natp winner-by-majority)))
-               (< 1 (number-of-candidates xs))))
-    :hints (("Goal"
-             :do-not-induct t
-             :in-theory (e/d (first-choice-of-majority-p)
-                             ())))
-    :rule-classes :linear)
-
+  ///
   (local
-   (defthm irv-ballot-p-opener-3
-     (implies
-      (and (irv-ballot-p xs) (consp xs))
-      (and (consp (acl2::<-insertsort (car xs)))
-           (nat-listp (acl2::<-insertsort (car xs)))))))
+   (defthm irv-ballot-p-consp-of-flatten
+     (implies (and (irv-ballot-p xs) (consp xs))
+              (consp (acl2::flatten xs)))
+     :hints (("Goal" :in-theory (e/d (acl2::flatten) ())))))
+
 
   (defthm non-empty-ballot-returns-one-winner
     (implies (and (irv-ballot-p xs) (consp xs))
              (natp (irv xs)))
-    :hints (("Goal" :in-theory (e/d () (irv-ballot-p))))
+    :hints (("Goal" :in-theory (e/d () ())))
     :rule-classes (:rewrite :type-prescription)))
-
 
 ;; ----------------------------------------------------------------------
