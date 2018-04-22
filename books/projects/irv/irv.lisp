@@ -20,16 +20,13 @@
 ;;   (1) If a candidate is the first choice of more than half of the voters,
 ;;       then he/she wins.  Otherwise:
 
-;;   (2) If every remaining candidate has the same number of first-place
-;;       votes, pick the one with the smallest ID.  Otherwise:
-
-;;   (3) Adjust each ballot by eliminating the candidate with the
+;;   (2) Adjust each ballot by eliminating the candidate with the
 ;;       fewest first-place votes.  If there is a tie for the fewest
 ;;       first-place votes, then delete the candidate with the least
 ;;       second-place votes, etc.  If the tie persists, then delete
 ;;       the candidate with the smallest ID.
 
-;;   (4) Go to (1).
+;;   (3) Go to (1).
 
 ;; ----------------------------------------------------------------------
 
@@ -485,37 +482,37 @@
     (and (equal (car x) e)
          (list-elements-equal e (cdr x)))))
 
-(define pick-candidate-among-those-with-same-number-of-first-place-votes
-  ((cids nat-listp "Sorted Candidate IDs")
-   (xs irv-ballot-p))
-  :short "If every remaining candidate has the same number of
-    first-place votes, pick the candidate with the smallest ID"
-  :long "<p>This function encodes step (2) of the IRV algorithm. This
-  function returns @('nil') if <b>all</b> the remaining candidates do
-  not have the same number of first-place votes.</p>"
+;; (define pick-candidate-among-those-with-same-number-of-first-place-votes
+;;   ((cids nat-listp "Sorted Candidate IDs")
+;;    (xs irv-ballot-p))
+;;   :short "If every remaining candidate has the same number of
+;;     first-place votes, pick the candidate with the smallest ID"
+;;   :long "<p>This function encodes step (2) of the IRV algorithm. This
+;;   function returns @('nil') if <b>all</b> the remaining candidates do
+;;   not have the same number of first-place votes.</p>"
 
-  :guard-hints (("Goal" :do-not-induct t))
+;;   :guard-hints (("Goal" :do-not-induct t))
 
-  :returns (candidate
-            acl2::maybe-natp
-            :hyp :guard
-            :hints (("Goal" :in-theory (e/d (acl2::maybe-natp) ()))))
+;;   :returns (candidate
+;;             acl2::maybe-natp
+;;             :hyp :guard
+;;             :hints (("Goal" :in-theory (e/d (acl2::maybe-natp) ()))))
 
-  :prepwork
-  ((local
-    (defthm consp-of-car-of-count-alist
-      (implies (and (consp alst)
-                    (count-alistp alst))
-               (consp (car alst))))))
+;;   :prepwork
+;;   ((local
+;;     (defthm consp-of-car-of-count-alist
+;;       (implies (and (consp alst)
+;;                     (count-alistp alst))
+;;                (consp (car alst))))))
 
-  (if (or (endp xs) (endp cids))
-      nil
-    (b* ((count-alst (create-nth-choice-count-alist 0 cids xs))
-         (all-votes  (strip-cdrs count-alst))
-         (all-votes-same? (list-elements-equal (car all-votes) all-votes)))
-      (if all-votes-same?
-          (car (car count-alst)) ;; Smallest candidate ID
-        nil))))
+;;   (if (or (endp xs) (endp cids))
+;;       nil
+;;     (b* ((count-alst (create-nth-choice-count-alist 0 cids xs))
+;;          (all-votes  (strip-cdrs count-alst))
+;;          (all-votes-same? (list-elements-equal (car all-votes) all-votes)))
+;;       (if all-votes-same?
+;;           (car (car count-alst)) ;; Smallest candidate ID
+;;         nil))))
 
 (define min-nats ((x nat-listp))
   :short "Pick the minimum number in a list of natural numbers"
@@ -731,9 +728,9 @@
                     tie-breaking (in ascending order)")
    (xs   irv-ballot-p))
 
-  :short "Returns a candidate to be eliminated in step (3) of the IRV
+  :short "Returns a candidate to be eliminated in step (2) of the IRV
   algorithm"
-  :long "<p>This function encodes step (3) of the IRV algorithm. If it
+  :long "<p>This function encodes step (2) of the IRV algorithm. If it
   can find exactly one candidate among @('cids') with the fewest
   @('n')th-place votes, then it returns that candidate.  Otherwise, if
   it finds more than one candidate (i.e., if there is a tie), it goes
@@ -752,7 +749,8 @@
      Reason: 4 has zero 0th-place votes.</p>
 
   <code>
-  (candidate-with-least-nth-place-votes 0 '(1 2 3) '((1 2 3) (1 3 2) (3 2 1) (3 2 1) (2 3 1)))
+  (candidate-with-least-nth-place-votes 0 '(1 2 3) 
+                                        '((1 2 3) (1 3 2) (3 2 1) (3 2 1) (2 3 1)))
   </code>
   <p>Result: candidate 2 <br/>
      Reason: 2 has the fewest number of 0th-place votes.</p>
@@ -765,9 +763,8 @@
      place votes. So we pick 2, because it is lesser than 3.</p>
 
   <p>Note that this function will not be called by @(see irv) on
-  ballots where step (1) and (2) of the IRV algorithm apply, i.e.,
-  when there is a majority or tie among candidates for the first-place
-  votes.</p>"
+  ballots where step (1) of the IRV algorithm applies, i.e., when
+  there is a majority in the first-place votes.</p>"
 
   :prepwork
   ((local (in-theory (e/d (number-of-candidates acl2::maybe-natp) ())))
@@ -1139,7 +1136,6 @@
 (define irv ((xs irv-ballot-p))
 
   ;; (trace$ first-choice-of-majority-p)
-  ;; (trace$ pick-candidate-among-those-with-same-number-of-first-place-votes)
   ;; (trace$ candidate-with-least-nth-place-votes)
 
   ;; (irv '((1 2 3) (3 1 2) (3 2 1) (3 2 1))) ;; 3 wins (majority)
@@ -1167,9 +1163,10 @@
        (consp xs)
        (not (natp (first-choice-of-majority-p (candidate-ids xs)
                                               xs)))
-       (not (natp (pick-candidate-among-those-with-same-number-of-first-place-votes
-                   (candidate-ids xs)
-                   xs))))
+       ;; (not (natp (pick-candidate-among-those-with-same-number-of-first-place-votes
+       ;;             (candidate-ids xs)
+       ;;             xs)))
+       )
       (< (number-of-candidates
           (eliminate-candidate
            (candidate-with-least-nth-place-votes 0 (candidate-ids xs)
@@ -1571,12 +1568,12 @@
              (step-1-candidate (first-choice-of-majority-p cids xs))
              ((when (natp step-1-candidate))
               step-1-candidate)
-             (step-2-candidate
-              (pick-candidate-among-those-with-same-number-of-first-place-votes
-               cids xs))
-             ((when (natp step-2-candidate))
-              step-2-candidate)
-             (step-n-candidate-to-remove
+             ;; (step-2-candidate
+             ;;  (pick-candidate-among-those-with-same-number-of-first-place-votes
+             ;;   cids xs))
+             ;; ((when (natp step-2-candidate))
+             ;;  step-2-candidate)
+             (step-2-candidate-to-remove
               (candidate-with-least-nth-place-votes
                0    ;; First preference
                cids ;; List of relevant candidates
@@ -1586,7 +1583,7 @@
              ;;                            (acl2::flatten xs))))
              ;;  ;; We have proved that nil can't be returned here.
              ;;  nil)
-             (new-xs (eliminate-candidate step-n-candidate-to-remove xs)))
+             (new-xs (eliminate-candidate step-2-candidate-to-remove xs)))
           (irv new-xs)))
 
     nil)
