@@ -6,13 +6,11 @@
 (include-book "std/util/define" :dir :system)
 (include-book "std/basic/defs"  :dir :system)
 (include-book "std/lists/sets"  :dir :system)
-(include-book "std/lists/intersectp"  :dir :system)
-(include-book "std/lists/flatten"  :dir :system)
-(include-book "std/lists/duplicity"  :dir :system)
-(include-book "std/lists/remove-duplicates"  :dir :system)
-(include-book "std/lists/nth"  :dir :system)
 (include-book "defsort/defsort" :dir :system)
-
+(local (include-book "std/lists/flatten"  :dir :system))
+(local (include-book "std/lists/duplicity"  :dir :system))
+(local (include-book "std/lists/remove-duplicates"  :dir :system))
+(local (include-book "std/lists/nth"  :dir :system))
 (local (include-book "arithmetic/top-with-meta" :dir :system))
 
 ;; The winner will be chosen as follows.
