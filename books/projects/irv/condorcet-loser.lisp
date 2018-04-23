@@ -255,11 +255,13 @@
  (defthm head-to-head-irv-is-the-same-as-full-irv
    (implies
     (and (member-equal id (candidate-ids xs))
-         (not (equal id (irv xs))))
-    (equal (irv (eliminate-other-candidates
-                 (list id (irv xs))
-                 xs))
-           (irv xs)))))
+         (not (equal id (irv xs)))
+         (irv-ballot-p xs)
+         (<= 2 (number-of-candidates xs)))
+    (equal (irv (eliminate-other-candidates (list id (irv xs)) xs))
+           (irv xs)))
+   :hints (("Goal" :in-theory (e/d (eliminate-other-candidates)
+                                   ())))))
 
 (local
  (defthm car-of-remove-element-is-not-equal-to-that-element
@@ -413,13 +415,15 @@
 
 ;; ----------------------------------------------------------------------
 
-;; (i-am-here)
+(i-am-here)
 
-;; (defthm head-to-head-irv-is-the-same-as-full-irv
-;;   (implies
-;;    (and (member-equal id (candidate-ids xs))
-;;         (not (equal id (irv xs))))
-;;    (equal (irv (eliminate-other-candidates
-;;                 (list id (irv xs))
-;;                 xs))
-;;           (irv xs))))
+(defthm head-to-head-irv-is-the-same-as-full-irv
+  (implies
+   (and (member-equal id (candidate-ids xs))
+        (not (equal id (irv xs)))
+        (irv-ballot-p xs)
+        (< 2 (number-of-candidates xs)))
+   (equal (irv (eliminate-other-candidates (list id (irv xs)) xs))
+          (irv xs)))
+  :hints (("Goal"
+           :in-theory (e/d () ()))))

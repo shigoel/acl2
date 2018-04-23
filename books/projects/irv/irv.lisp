@@ -1134,9 +1134,9 @@
   ;; (trace$ candidate-with-least-nth-place-votes)
 
   ;; (irv '((1 2 3) (3 1 2) (3 2 1) (3 2 1))) ;; 3 wins (majority)
-  ;; (irv '((1 2 3) (3 1 2) (3 2 1) (2 3 1))) ;; 2 wins
-  ;; (irv '((1 2 3) (1 3 2) (3 2 1) (2 3 1))) ;; 1 wins (tie-breaks in all rounds)
-  ;; (irv '((1 2 3 4) (1 3 2 4) (3 2 1 4) (2 3 1 4)))
+  ;; (irv '((1 2 3) (3 1 2) (3 2 1) (2 3 1))) ;; 3 wins (tie-breaks)
+  ;; (irv '((1 2 3) (1 3 2) (3 2 1) (2 3 1))) ;; 3 wins (tie-breaks)
+  ;; (irv '((1 2 3 4) (1 3 2 4) (3 2 1 4) (2 3 1 4))) ;; 3 wins (tie-breaks)
 
   :measure (number-of-candidates xs)
 
