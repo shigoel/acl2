@@ -75,9 +75,49 @@
     (equal (remove-all as (remove-all bs cs))
            (remove-all bs (remove-all as cs))))
 
-  (defthm subsetp-equal-and-remove-all-1
-    (implies (subsetp-equal x y)
-             (subsetp-equal (remove-all x y) y))
+  (defthm remove-all-returns-a-subset-of-the-list
+    (subsetp-equal (remove-all x y) y)
+    :hints (("Goal" :in-theory (e/d (subsetp-equal) ()))))
+
+  (defthm remove-all-and-member-equal-1
+    (implies (member-equal e a)
+             (equal (member-equal e (remove-all a b)) nil)))
+
+  (defthm remove-all-and-member-equal-2
+    (implies (not (member-equal e a))
+             (iff (member-equal e (remove-all a b))
+                  (member-equal e b))))
+
+  (defthm remove-all-of-nil-is-nil
+    (equal (remove-all x nil) nil))
+
+  (defthm remove-all-x-from-cons-e-y
+    (equal (remove-all x (cons e y))
+           (if (member-equal e x)
+               (remove-all x y)
+             (cons e (remove-all x y)))))
+
+  (defthm remove-all-superset-from-subset-is-nil
+    (implies (and (subsetp-equal y x)
+                  (true-listp y))
+             (equal (remove-all x y) nil))
+    :hints (("Goal" :in-theory (e/d (subsetp-equal) ()))))
+
+  (defthm remove-all-and-set-equiv
+    ;; More general version of remove-all-x-x-is-nil.
+    (implies (and (acl2::set-equiv x y)
+                  (true-listp y))
+             (equal (remove-all x y) nil))
+    :hints (("Goal"
+             :induct (remove-all x y)
+             :in-theory (e/d (acl2::set-equiv)
+                             ((:induction member-equal)
+                              remove-all-cons-to-remove-all-remove-equal
+                              remove-all-and-remove-equal-commute)))))
+
+  (defthm nested-remove-alls-and-subsetp-equal
+    (implies (subsetp-equal a c)
+             (subsetp-equal a (remove-all (remove-all a b) c)))
     :hints (("Goal" :in-theory (e/d (subsetp-equal) ())))))
 
 (define eliminate-candidates ((cids nat-listp "Candidates to remove")
@@ -143,7 +183,11 @@
 
   (defthm candidate-ids-of-eliminate-candidates
     (equal (candidate-ids (eliminate-candidates cids xs))
-           (remove-all cids (candidate-ids xs)))))
+           (remove-all cids (candidate-ids xs))))
+
+  (defthm eliminate-candidates-where-cids=nil-does-not-modify-xs
+    (equal (eliminate-candidates nil xs) xs)
+    :hints (("Goal" :in-theory (e/d (eliminate-candidates) ())))))
 
 (define eliminate-other-candidates ((cids nat-listp "Candidates to preserve")
                                     (xs irv-ballot-p))
@@ -167,61 +211,29 @@
 
   (defthm eliminate-other-candidates-returns-a-subset-of-cids
     (subsetp-equal (candidate-ids (eliminate-other-candidates cids xs))
-                   cids))  
+                   cids))
 
-  (defthm remove-all-and-member-equal-1
-    (implies (member-equal e a)
-             (equal (member-equal e (remove-all a b))
-                    nil)))
+  (defthm cids-is-a-subset-of-eliminate-other-candidates
+    (implies (subsetp-equal cids (candidate-ids xs))
+             (subsetp-equal
+              cids
+              (candidate-ids (eliminate-other-candidates cids xs)))))
 
-  (defthm remove-all-and-member-equal-2
-    (implies (not (member-equal e a))
-             (iff (member-equal e (remove-all a b))
-                  (member-equal e b))))
+  (defthm eliminate-other-candidates-equal-to-cids-under-set-equiv
+    (implies (subsetp-equal cids (candidate-ids xs))
+             (acl2::set-equiv
+              (candidate-ids (eliminate-other-candidates cids xs))
+              cids))
+    :hints (("Goal" :in-theory (e/d (acl2::set-equiv)
+                                    (eliminate-other-candidates
+                                     candidate-ids)))))
 
-  ;; (defthm subsetp-equal-and-remove-all-2
-  ;;   (implies (and (subsetp-equal a b)
-  ;;                 (no-duplicatesp-equal a)
-  ;;                 (no-duplicatesp-equal b))
-  ;;            (subsetp-equal a (remove-all (remove-all a b) b)))
-  ;;   :hints (("Goal" :in-theory (e/d (subsetp-equal
-  ;;                                    no-duplicatesp-equal)
-  ;;                                   ()))))
-
-  ;; (defthm cids-is-a-subset-of-eliminate-other-candidates
-  ;;   (implies (subsetp-equal cids (candidate-ids xs))
-  ;;            (subsetp-equal
-  ;;             cids
-  ;;             (candidate-ids (eliminate-other-candidates cids xs)))))
-
-  ;; (defthm eliminate-other-candidates-equal-to-cids-under-set-equiv
-  ;;   (implies (subsetp-equal cids (candidate-ids xs))
-  ;;            (acl2::set-equiv
-  ;;             (candidate-ids (eliminate-other-candidates cids xs))
-  ;;             cids))
-  ;;   :hints (("Goal" :in-theory (e/d (acl2::set-equiv)
-  ;;                                   (eliminate-other-candidates
-  ;;                                    candidate-ids)))))
-  )
-
-;; ----------------------------------------------------------------------
-
-;; (defun-sk forall-c2-condorcet-loser-p (c1 xs)
-;;   (forall c2
-;;           (and (member-equal c2 (candidate-ids xs))
-;;                (not (equal c2 c1))
-;;                (not (equal
-;;                      c1
-;;                      (irv (eliminate-other-candidates (list c1 c2) xs)))))))
-
-;; (local (in-theory (e/d () (forall-c2-condorcet-loser-p forall-c2-condorcet-loser-p-necc))))
-
-;; (defthm irv-satisfies-condorcet-loser-criterion
-;;   (implies
-;;    (and (irv-ballot-p xs)
-;;         (member-equal c1 (candidate-ids xs))
-;;         (forall-c2-condorcet-loser-p c1 xs))
-;;    (not (equal (irv xs) c1))))
+  (defthm eliminate-other-candidates-does-not-modify-xs-when-cids=candidate-ids
+    ;; Directly follows from remove-all-and-set-equiv.
+    (implies
+     (acl2::set-equiv cids (candidate-ids xs))
+     (equal (eliminate-other-candidates cids xs) xs))
+    :hints (("Goal" :do-not-induct t))))
 
 ;; ----------------------------------------------------------------------
 
@@ -236,8 +248,10 @@
 (local (in-theory (e/d () (exists-loser-against-winner-in-head-to-head-p
                            exists-loser-against-winner-in-head-to-head-p-suff))))
 
+;; ----------------------------------------------------------------------
+
 (local
- (defthm irv-satisfies-condorcet-loser-criterion-aux-trivial-subgoal-1
+ (defthm irv-satisfies-condorcet-loser-criterion-aux-helper-1
    (implies
     (and (irv-ballot-p xs)
          (consp xs)
@@ -262,27 +276,181 @@
                    0 (candidate-ids xs) xs))
               (xs xs)))))))
 
-#||
+(local
+ (encapsulate
+   ()
 
-;; (defthm eliminate-other-candidates-does-not-modify-xs
+   (local
+    (defthm lemma-1
+      (implies (and (equal (len x) 2)
+                    (no-duplicatesp-equal x))
+               (not (equal (car (remove-equal e x)) e)))
+      :hints (("Goal" :in-theory (e/d (len) ())))))
+
+   (local
+    (defthm lemma-2
+      (implies (and (equal (len x) 2)
+                    (no-duplicatesp-equal x))
+               (member-equal (car (remove-equal e x)) x))
+      :hints (("Goal" :in-theory (e/d (len) ())))))
+
+
+   (local
+    (defthm lemma-3
+      (implies (and (equal (len x) 2)
+                    (no-duplicatesp-equal x)
+                    (member-equal e x))
+               (acl2::set-equiv
+                (list (car (remove-equal e x)) e)
+                x))
+      :hints (("Goal" :in-theory (e/d (len acl2::set-equiv)
+                                      ())))))
+
+   (defthm irv-satisfies-condorcet-loser-criterion-aux-helper-2
+     (implies (and (equal (number-of-candidates xs) 2)
+                   (irv-ballot-p xs)
+                   (consp xs))
+              (exists-loser-against-winner-in-head-to-head-p xs))
+     :hints
+     (("Goal"
+       :do-not-induct t
+       :in-theory
+       (e/d (number-of-candidates)
+            (eliminate-other-candidates-does-not-modify-xs-when-cids=candidate-ids))
+       :use
+       ((:instance exists-loser-against-winner-in-head-to-head-p-suff
+                   (loser
+                    (car (remove-equal (irv xs) (candidate-ids xs))))
+                   (xs xs))
+        (:instance eliminate-other-candidates-does-not-modify-xs-when-cids=candidate-ids
+                   (cids (list (car (remove-equal
+                                     (irv xs)
+                                     (candidate-ids xs)))
+                               (irv xs)))
+                   (xs xs))))))))
+
+(define condorcet-loser-ind-hint (xs)
+  :enabled t
+  :measure (number-of-candidates xs)
+  :prepwork
+  ((local (in-theory (e/d (number-of-candidates) ())))
+
+   (local
+    (defthm remove-equal-reduces-length-of-list
+      (implies
+       (and (true-listp lst) (member-equal x lst))
+       (< (len (remove-equal x lst)) (len lst)))))
+
+   (local
+    (defthm condorcet-loser-ind-hint-termination-lemma
+      (implies
+       (and (consp xs)
+            (irv-ballot-p xs)
+            (< 2 (number-of-candidates xs)))
+       (<
+        (number-of-candidates
+         (eliminate-candidate
+          (candidate-with-least-nth-place-votes
+           0 (candidate-ids xs) xs)
+          xs))
+        (number-of-candidates xs)))
+      :hints (("Goal"
+               :in-theory
+               (e/d ()
+                    (candidate-with-least-nth-place-votes-is-in-cids
+                     candidate-with-least-nth-place-votes-returns-a-natp))
+               :use
+               ((:instance candidate-with-least-nth-place-votes-returns-a-natp
+                           (n 0)
+                           (cids (candidate-ids xs))
+                           (xs xs))
+                (:instance candidate-with-least-nth-place-votes-is-in-cids
+                           (n 0)
+                           (cids (candidate-ids xs))
+                           (xs xs)))))))
+
+   (local (in-theory (e/d () (number-of-candidates)))))
+
+  (if (irv-ballot-p xs)
+
+      (if (endp xs)
+          xs
+        (if (<= (number-of-candidates xs) 2)
+            xs
+          (b* ((step-n-candidate-to-remove
+                (candidate-with-least-nth-place-votes
+                 0 (candidate-ids xs) xs))
+               (reduced-xs (eliminate-candidate step-n-candidate-to-remove xs)))
+            (condorcet-loser-ind-hint reduced-xs))))
+    xs))
+
+;; (i-am-here)
+
+;; ;; TODO:
+;; (skip-proofs
+;;  (defthm foo-1
+;;    (equal
+;;     (irv (eliminate-candidate
+;;           (candidate-with-least-nth-place-votes
+;;            0 (candidate-ids xs) xs)
+;;           xs))
+;;     (irv xs))))
+
+;; (skip-proofs
+;;  (defthm foo-2
+;;    (implies
+;;     (and (member-equal id (candidate-ids xs))
+;;          (not (equal id (irv xs))))
+;;     (equal (irv (eliminate-other-candidates
+;;                  (list id (irv xs))
+;;                  xs))
+;;            (irv xs)))))
+
+
+;; (local
+;;  (defthm irv-satisfies-condorcet-loser-criterion-aux-inductive-step
+;;    (implies
+;;     (and (irv-ballot-p xs)
+;;          (consp xs)
+;;          (< 2 (number-of-candidates xs))
+;;          (exists-loser-against-winner-in-head-to-head-p
+;;           (eliminate-candidate
+;;            (candidate-with-least-nth-place-votes
+;;             0 (candidate-ids xs) xs)
+;;            xs)))
+;;     (exists-loser-against-winner-in-head-to-head-p xs))
+;;    :hints
+;;    (("Goal"
+;;      :do-not-induct t
+;;      :use
+;;      ((:instance (:definition
+;;                   exists-loser-against-winner-in-head-to-head-p)
+;;                  ;; For the quantifier in the hypotheses:
+;;                  (xs
+;;                   (eliminate-candidate
+;;                    (candidate-with-least-nth-place-votes
+;;                     0 (candidate-ids xs) xs)
+;;                    xs)))
+;;       (:instance exists-loser-against-winner-in-head-to-head-p-suff
+;;                  ;; For the quantifier in the conclusion: using the witness of
+;;                  ;; the quantifier in the hypotheses to proceed...
+;;                  (loser
+;;                   (exists-loser-against-winner-in-head-to-head-p-witness
+;;                    (eliminate-candidate
+;;                     (candidate-with-least-nth-place-votes
+;;                      0 (candidate-ids xs) xs)
+;;                     xs)))
+;;                  (xs xs)))))))
+
+;; (defthm irv-satisfies-condorcet-loser-criterion-aux
 ;;   (implies
-;;    (acl2::set-equiv cids (candidate-ids xs))
-;;    (equal (eliminate-other-candidates cids xs)
-;;           xs)))
+;;    (and (irv-ballot-p xs)
+;;         (<= 2 (number-of-candidates xs)))
+;;    (exists-loser-against-winner-in-head-to-head-p xs))
+;;   :hints
+;;   (("Goal" :induct (condorcet-loser-ind-hint xs))))
 
-(skip-proofs
- ;; TODO -- needs eliminate-other-candidates-does-not-modify-xs, etc.
- (defthm irv-satisfies-condorcet-loser-criterion-aux-2
-   (implies (and (equal (number-of-candidates xs) 2)
-                 (irv-ballot-p xs)
-                 (consp xs))
-            (exists-loser-against-winner-in-head-to-head-p xs))
-   :hints (("Goal"
-            :do-not-induct t
-            :use ((:instance exists-loser-against-winner-in-head-to-head-p-suff
-                             (loser (car (remove-equal (irv xs) (candidate-ids xs))))
-                             (xs xs)))))
-   :otf-flg t))
+;; ----------------------------------------------------------------------
 
 ;; (local
 ;;  (defthm first-choice-of-majority-satisfies-existence-of-loser
@@ -306,87 +474,21 @@
 ;;    :otf-flg t))
 
 
-(local
- (defthm irv-satisfies-condorcet-loser-criterion-aux-inductive-step
-   (implies
-    (and (irv-ballot-p xs)
-         (consp xs)
-         (< 2 (number-of-candidates xs))
-         (exists-loser-against-winner-in-head-to-head-p
-          (eliminate-candidate
-           (candidate-with-least-nth-place-votes
-            0 (candidate-ids xs) xs)
-           xs)))
-    (exists-loser-against-winner-in-head-to-head-p xs))
-   :hints (("Goal"
-            :do-not-induct t
-            :use
-            ((:instance exists-loser-against-winner-in-head-to-head-p-suff
-                        (loser
-                         (candidate-with-least-nth-place-votes
-                          0 (candidate-ids xs) xs))
-                        (xs xs)))
-            :in-theory (e/d ()
-                            ())))
-   :otf-flg t))
+;; (defun-sk forall-c2-condorcet-loser-p (c1 xs)
+;;   (forall c2
+;;           (and (member-equal c2 (candidate-ids xs))
+;;                (not (equal c2 c1))
+;;                (not (equal
+;;                      c1
+;;                      (irv (eliminate-other-candidates (list c1 c2) xs)))))))
 
-(define condorcet-loser-ind-hint (xs)
-  :enabled t
-  :measure (number-of-candidates xs)
-  :prepwork
-  ((local (in-theory (e/d (number-of-candidates) ())))
+;; (local (in-theory (e/d () (forall-c2-condorcet-loser-p forall-c2-condorcet-loser-p-necc))))
 
-   (local
-    (defthm remove-equal-reduces-length-of-list
-      (implies
-       (and (true-listp lst) (member-equal x lst))
-       (< (len (remove-equal x lst)) (len lst)))))
+;; (defthm irv-satisfies-condorcet-loser-criterion
+;;   (implies
+;;    (and (irv-ballot-p xs)
+;;         (member-equal c1 (candidate-ids xs))
+;;         (forall-c2-condorcet-loser-p c1 xs))
+;;    (not (equal (irv xs) c1))))
 
-   (local
-    (defthm condorcet-loser-ind-hint-termination-lemma
-      (implies
-       (and (consp xs)
-            (irv-ballot-p xs)
-            (< 2 (len (candidate-ids xs))))
-       (<
-        (len
-         (remove-equal (candidate-with-least-nth-place-votes 0 (candidate-ids xs)
-                                                             xs)
-                       (candidate-ids xs)))
-        (len (candidate-ids xs))))
-      :hints (("Goal" :in-theory (e/d ()
-                                      (candidate-with-least-nth-place-votes-is-in-cids
-                                       candidate-with-least-nth-place-votes-returns-a-natp))
-               :use ((:instance candidate-with-least-nth-place-votes-returns-a-natp
-                                (n 0)
-                                (cids (candidate-ids xs))
-                                (xs xs))
-                     (:instance candidate-with-least-nth-place-votes-is-in-cids
-                                (n 0)
-                                (cids (candidate-ids xs))
-                                (xs xs))))))))
-
-  (if (irv-ballot-p xs)
-
-      (if (endp xs)
-          xs
-        (if (<= (number-of-candidates xs) 2)
-            xs
-          (b* ((step-n-candidate-to-remove
-                (candidate-with-least-nth-place-votes
-                 0 (candidate-ids xs) xs))
-               (reduced-xs (eliminate-candidate step-n-candidate-to-remove xs)))
-            (condorcet-loser-ind-hint reduced-xs))))
-    xs))
-
-(defthm irv-satisfies-condorcet-loser-criterion-aux
-  (implies
-   (and (irv-ballot-p xs)
-        (<= 2 (number-of-candidates xs)))
-   (exists-loser-against-winner-in-head-to-head-p xs))
-  :hints
-  (("Goal"
-    :induct (condorcet-loser-ind-hint xs)
-    :in-theory (e/d () ()))))
-
-||#
+;; ----------------------------------------------------------------------
