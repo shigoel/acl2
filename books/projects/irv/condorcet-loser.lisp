@@ -447,24 +447,43 @@
 
 ;; ----------------------------------------------------------------------
 
-(thm
- (implies
-  (and (< majority (max-nats (strip-cdrs count-alst)))
-       (not (equal id (car (rassoc-equal (max-nats (strip-cdrs count-alst)) count-alst))))
-       (member-equal id (strip-cars count-alst))
-       (no-duplicatesp-equal (strip-cars count-alst))
-       (count-alistp count-alst)
-       (natp majority))
-  (< (cdr (assoc-equal id count-alst))
-     majority)))
+(encapsulate
+  ()
+
+  (local
+   (defun assoc-of-rassoc-ind-hint (val alst alst-copy)
+     (if (endp alst)
+         nil
+       (if (equal (cdr (car alst)) val)
+           (assoc-equal (car (car alst)) alst-copy)
+         (assoc-of-rassoc-ind-hint val (cdr alst) alst-copy)))))
+
+  (defthm assoc-equal-when-member-not-in-alist
+    (implies (not (member-equal e (strip-cars alst)))
+             (equal (assoc-equal e alst) nil)))
+
+  (defthmd assoc-of-rassoc-lemma
+    (implies
+     (and (car (rassoc-equal val alst))
+          (no-duplicatesp-equal (strip-cars alst))
+          ;; (nat-listp (strip-cdrs alst))
+          (count-alistp alst))
+     (equal (cdr (assoc-equal (car (rassoc-equal val alst)) alst))
+            val))
+    :hints (("Goal"
+             :induct (assoc-of-rassoc-ind-hint val alst alst)
+             :in-theory (e/d ()
+                             ((:induction alistp)
+                              (:induction assoc-equal)))))))
 
 (skip-proofs
  (defthmd majority-loser-gets-<=-votes-than-the-majority
-   (b* ((count-alst (create-nth-choice-count-alist 0 cids xs))
+   (b* ((cids (candidate-ids xs))
+        (count-alst (create-nth-choice-count-alist 0 cids xs))
         (majority-choice (first-choice-of-majority-p cids xs))
         (id-votes (cdr (assoc-equal id count-alst))))
      (implies (and
-               (member-equal id (candidate-ids xs))
+               (member-equal id cids)
                (not (equal id majority-choice))
                (natp majority-choice)
                (irv-ballot-p xs))
@@ -474,33 +493,32 @@
    :rule-classes :linear
    :otf-flg t))
 
-(local
- (defthm assoc-of-rassoc-lemma
-   (implies
-    (and
-     (alistp alst)
-     (car (rassoc-equal val alst)))
-    (equal (cdr (assoc-equal (car (rassoc-equal val alst)) alst))
-           val))
-   :hints (("Goal" :in-theory (e/d () ())))))
-
 (defthm majority-winner-gets-more-votes-than-anyone-else
-  (b* ((count-alst (create-nth-choice-count-alist 0 cids xs))
+  (b* ((cids (candidate-ids xs))
+       (count-alst (create-nth-choice-count-alist 0 cids xs))
        (majority-choice (first-choice-of-majority-p cids xs))
        (winner-votes (cdr (assoc-equal majority-choice count-alst)))
        (id-votes (cdr (assoc-equal id count-alst))))
     (implies (and
-              (member-equal id (candidate-ids xs))
+              (member-equal id cids)
               (not (equal id majority-choice))
               (natp majority-choice)
               (irv-ballot-p xs))
              (< id-votes winner-votes)))
   :hints (("Goal" :do-not-induct t
-           :use ((:instance majority-loser-gets-<=-votes-than-the-majority))
+           :use ((:instance majority-loser-gets-<=-votes-than-the-majority)
+                 (:instance assoc-of-rassoc-lemma
+                            (val (max-nats
+                                  (strip-cdrs
+                                   (create-nth-choice-count-alist
+                                    0
+                                    (candidate-ids xs)
+                                    xs))))
+                            (alst (create-nth-choice-count-alist
+                                   0 (candidate-ids xs) xs))))
            :in-theory (e/d (first-choice-of-majority-p)
                            ())))
-  :rule-classes :linear
-  :otf-flg t)
+  :rule-classes :linear)
 
 (local
  (defthm head-to-head-irv-majority-win-lemma-helper-1

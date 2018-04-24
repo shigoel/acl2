@@ -365,7 +365,12 @@
 
   (defthm strip-cars-of-create-count-alist-equal-under-set-equiv
     (acl2::set-equiv (strip-cars (create-count-alist cids choice-lst)) cids)
-    :hints (("Goal" :in-theory (e/d (acl2::set-equiv) ())))))
+    :hints (("Goal" :in-theory (e/d (acl2::set-equiv) ()))))
+
+  (defthm no-duplicatesp-equal-of-strip-cars-of-create-count-alist
+    (implies (no-duplicatesp-equal cids)
+             (no-duplicatesp-equal
+              (strip-cars (create-count-alist cids lst))))))
 
 (define create-nth-choice-count-alist
   ((n natp)
@@ -393,7 +398,13 @@
            (consp cids)))
 
   (defret strip-cars-of-create-nth-choice-count-alist-equal-under-set-equiv
-    (acl2::set-equiv (strip-cars count-alst) cids)))
+    (acl2::set-equiv (strip-cars count-alst) cids))
+
+  (defthm no-duplicatesp-equal-of-strip-cars-of-create-nth-choice-count-alist
+    (implies (no-duplicatesp-equal cids)
+             (no-duplicatesp-equal
+              (strip-cars
+               (create-nth-choice-count-alist n cids xs))))))
 
 (define majority ((n natp "Number of voters"))
   :returns (maj natp
