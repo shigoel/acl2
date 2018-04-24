@@ -1570,12 +1570,12 @@
     nil)
 
   ///
+
   (local
    (defthm irv-ballot-p-consp-of-flatten
      (implies (and (irv-ballot-p xs) (consp xs))
               (consp (acl2::flatten xs)))
      :hints (("Goal" :in-theory (e/d (acl2::flatten) ())))))
-
 
   (defthm non-empty-ballot-returns-one-winner
     (implies (and (irv-ballot-p xs) (consp xs))

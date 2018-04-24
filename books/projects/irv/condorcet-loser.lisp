@@ -417,6 +417,166 @@
 
 (i-am-here)
 
+;; Pen-and-paper proof of head-to-head-irv-is-the-same-as-full-irv:
+
+;; Proof by contradiction. Let c == (irv xs). Let us assume that
+;; (irv (eliminate-other-candidates (list id c))) != c.
+;; That is, (irv (eliminate-other-candidates (list id c))) == id.
+
+;; There are two ways in which id can be the winner in a head-to-head
+;; competition against c.
+
+;; (1) id gets the majority of the 0th-place votes.
+
+;;     If this were the case, then in (irv xs), id would have more
+;;     0th-place votes than c --- consequently, c couldn't be the
+;;     0th-choice of majority. Also, no other candidate could be the
+;;     0th-choice of majority, else they, not c, would be the winner
+;;     in (irv xs).  Hence, this is a contradiction.
+
+;; (2) c gets the least 1st-place votes or c < id, i.e., the identifier
+;;     of c is less than that of id.
+
+;;     We will be in this case if id and c get equal number of 0th-place
+;;     votes. If c gets fewer 1st-place votes than id, then in (irv xs),
+;;     c would be eliminated too.  If c and id get the same number of
+;;     1st-place votes but c < id, then in (irv xs), again c would be
+;;     eliminated.  In both of these cases, we get a contradiction.
+
+;; Q.E.D.
+
+;; ----------------------------------------------------------------------
+
+(thm
+ (implies
+  (and (< majority (max-nats (strip-cdrs count-alst)))
+       (not (equal id (car (rassoc-equal (max-nats (strip-cdrs count-alst)) count-alst))))
+       (member-equal id (strip-cars count-alst))
+       (no-duplicatesp-equal (strip-cars count-alst))
+       (count-alistp count-alst)
+       (natp majority))
+  (< (cdr (assoc-equal id count-alst))
+     majority)))
+
+(skip-proofs
+ (defthmd majority-loser-gets-<=-votes-than-the-majority
+   (b* ((count-alst (create-nth-choice-count-alist 0 cids xs))
+        (majority-choice (first-choice-of-majority-p cids xs))
+        (id-votes (cdr (assoc-equal id count-alst))))
+     (implies (and
+               (member-equal id (candidate-ids xs))
+               (not (equal id majority-choice))
+               (natp majority-choice)
+               (irv-ballot-p xs))
+              (<= id-votes (majority (number-of-voters xs)))))
+   :hints (("Goal" :do-not-induct t
+            :in-theory (e/d (first-choice-of-majority-p) ())))
+   :rule-classes :linear
+   :otf-flg t))
+
+(local
+ (defthm assoc-of-rassoc-lemma
+   (implies
+    (and
+     (alistp alst)
+     (car (rassoc-equal val alst)))
+    (equal (cdr (assoc-equal (car (rassoc-equal val alst)) alst))
+           val))
+   :hints (("Goal" :in-theory (e/d () ())))))
+
+(defthm majority-winner-gets-more-votes-than-anyone-else
+  (b* ((count-alst (create-nth-choice-count-alist 0 cids xs))
+       (majority-choice (first-choice-of-majority-p cids xs))
+       (winner-votes (cdr (assoc-equal majority-choice count-alst)))
+       (id-votes (cdr (assoc-equal id count-alst))))
+    (implies (and
+              (member-equal id (candidate-ids xs))
+              (not (equal id majority-choice))
+              (natp majority-choice)
+              (irv-ballot-p xs))
+             (< id-votes winner-votes)))
+  :hints (("Goal" :do-not-induct t
+           :use ((:instance majority-loser-gets-<=-votes-than-the-majority))
+           :in-theory (e/d (first-choice-of-majority-p)
+                           ())))
+  :rule-classes :linear
+  :otf-flg t)
+
+(local
+ (defthm head-to-head-irv-majority-win-lemma-helper-1
+   (b* ((majority-choice
+         (first-choice-of-majority-p (candidate-ids xs) xs))
+        (reduced-xs
+         (eliminate-other-candidates (list id majority-choice) xs))
+        (reduced-xs-majority-choice
+         (first-choice-of-majority-p (candidate-ids reduced-xs) reduced-xs)))
+     (implies
+      (and
+       (member-equal id (candidate-ids xs))
+       (not (equal id majority-choice))
+       (natp majority-choice)
+       (natp reduced-xs-majority-choice)
+       (< 2 (number-of-candidates xs))
+       (irv-ballot-p xs)
+       (consp reduced-xs))
+      (equal reduced-xs-majority-choice majority-choice)))
+   :hints (("Goal"
+            :do-not-induct t
+            :in-theory (e/d () ())))
+   :otf-flg t))
+
+;; For head-to-head-irv-majority-win-lemma-helper-2, (not (natp
+;; majority-choice)) means that the number of votes for id <= those of
+;; (irv xs).  But since (natp reduced-xs-majority-choice), the
+;; inequality must be strict, which means reduced-xs-majority-choice
+;; == (irv xs).
+
+(local
+ (defthm head-to-head-irv-majority-win-lemma-helper-2
+   (b* ((majority-choice
+         (first-choice-of-majority-p (candidate-ids xs) xs))
+        (reduced-xs
+         (eliminate-other-candidates (list id majority-choice) xs))
+        (reduced-xs-majority-choice
+         (first-choice-of-majority-p (candidate-ids reduced-xs) reduced-xs)))
+     (implies
+      (and
+       (member-equal id (candidate-ids xs))
+       (not (equal id majority-choice))
+       (not (natp majority-choice))
+       (natp reduced-xs-majority-choice)
+       (< 2 (number-of-candidates xs))
+       (irv-ballot-p xs)
+       (consp reduced-xs))
+      (equal reduced-xs-majority-choice
+             (irv xs))))
+   :hints (("Goal"
+            :do-not-induct t
+            :in-theory (e/d () ())))
+   :otf-flg t))
+
+(local
+ (defthm head-to-head-irv-majority-win-lemma
+   (implies
+    (and
+     (member-equal id (candidate-ids xs))
+     (not (equal id (irv xs)))
+     (irv-ballot-p xs)
+     (< 2 (number-of-candidates xs))
+     (consp (eliminate-other-candidates (list id (irv xs)) xs))
+     (natp (first-choice-of-majority-p
+            (candidate-ids (eliminate-other-candidates (list id (irv xs)) xs))
+            (eliminate-other-candidates (list id (irv xs)) xs))))
+    (equal (first-choice-of-majority-p
+            (candidate-ids (eliminate-other-candidates (list id (irv xs)) xs))
+            (eliminate-other-candidates (list id (irv xs)) xs))
+           (irv xs)))
+   :hints (("Goal"
+            :do-not-induct t
+            :expand ((irv xs))
+            :in-theory (e/d () ())))
+   :otf-flg t))
+
 (defthm head-to-head-irv-is-the-same-as-full-irv
   (implies
    (and (member-equal id (candidate-ids xs))
@@ -426,4 +586,10 @@
    (equal (irv (eliminate-other-candidates (list id (irv xs)) xs))
           (irv xs)))
   :hints (("Goal"
-           :in-theory (e/d () ()))))
+           :do-not-induct t
+           :expand ((irv (eliminate-other-candidates (list id (irv xs)) xs))
+                    ;; (irv xs)
+                    )
+           :in-theory (e/d ()
+                           ())))
+  :otf-flg t)
