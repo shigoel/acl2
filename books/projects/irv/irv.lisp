@@ -49,7 +49,6 @@
 (local (include-book "std/lists/nth"  :dir :system))
 (local (include-book "arithmetic/top-with-meta" :dir :system))
 
-(local (in-theory (disable acl2::set-equiv-implies-equal-len-remove-duplicates-equal)))
 ;; ----------------------------------------------------------------------
 
 (defxdoc instant-runoff-voting
@@ -1215,16 +1214,6 @@
                      (+ -1 (len old))))
      :hints (("Goal" :in-theory (e/d (remove-equal
                                       no-duplicatesp-equal
-                                      len)
-                                     ())))))
-
-  (local
-   (defthm remove-duplicates-equal-remove-equal-and-len-lemma
-     (implies (and (not (member-equal id y)) (member-equal id x))
-              (equal (len (remove-duplicates-equal (append (remove-equal id x) y)))
-                     (+ -1 (len (remove-duplicates-equal (append x y))))))
-     :hints (("Goal" :in-theory (e/d (remove-equal
-                                      remove-duplicates-equal
                                       len)
                                      ())))))
 
